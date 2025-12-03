@@ -22,49 +22,34 @@ client = _get_openai_client()
 
 
 def _safe_extract_json(text: str) -> dict:
-    """Extracts and sanitizes JSON from messy LLM output."""
+    """
+    Extract JSON from <JSON>...</JSON>. If missing, fallback to first {...} block.
+    Cleans control characters and ensures valid JSON formatting.
+    """
 
-    text = text.replace("```json", "").replace("```", "").strip()
-    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    # 1) Try <JSON>...</JSON>
+    match = re.search(r"<JSON>(.*?)</JSON>", text, re.DOTALL)
+    if match:
+        json_text = match.group(1).strip()
+    else:
+        # 2) Fallback: find first {...} block
+        match2 = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match2:
+            raise ValueError("Timeline Bot: <JSON> wrapper missing AND no {} JSON block found.")
+        json_text = match2.group(0)
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("No JSON object found in LLM output.")
-    json_text = match.group(0)
-
-    # Fix invalid quotes
-    json_text = re.sub(r'(?<!\\)"(?=[^,:{}]*:)', '\\"', json_text)
-    json_text = re.sub(r'"\s*\n\s*"', ' ', json_text)
-    json_text = json_text.replace('\\""', '"').replace('"\\"', '"')
+    # Cleanup
+    json_text = re.sub(r"[\x00-\x1f\x7f]", " ", json_text)
+    json_text = json_text.replace("\n", " ")
+    json_text = re.sub(r",\s*(\}|\])", r"\1", json_text)
 
     try:
         return json.loads(json_text)
-    except:
-        pass
-
-    # Self repair
-    repair_prompt = f"""
-    Fix the following JSON. 
-    Do NOT change values — only repair formatting, quotes, escapes.
-    Return ONLY valid JSON.
-
-    {json_text}
-    """
-
-    repaired = client.responses.create(
-        model="gpt-4.1",
-        input=repair_prompt,
-        max_output_tokens=1200
-    ).output_text
-
-    repaired = repaired.replace("```json", "").replace("```", "").strip()
-    repaired = re.sub(r"[\x00-\x1f\x7f]", " ", repaired)
-
-    match2 = re.search(r"\{.*\}", repaired, re.DOTALL)
-    if not match2:
-        raise ValueError("No JSON found after repair.")
-    return json.loads(match2.group(0))
-
+    except Exception as e:
+        raise ValueError(
+            f"Timeline Bot JSON parse failed: {e}\n\n--- RAW JSON START ---\n"
+            f"{json_text[:3000]}\n--- RAW JSON END ---"
+        )
 
 
 def generate_timeline_llm(age: int, gender: str, diagnosis: dict) -> dict:
@@ -73,55 +58,55 @@ def generate_timeline_llm(age: int, gender: str, diagnosis: dict) -> dict:
     snomed = diagnosis.get("snomed_code", "")
 
     prompt = f"""
-    You are a senior clinician creating a highly detailed, multi-year, medically realistic
-    clinical timeline for a fictional patient.
+You are a senior clinician generating a multi-year medical timeline.
 
-    Patient:
-    - Age: {age}
-    - Gender: {gender}
-    - Primary Diagnosis: {dx}
-    - ICD-10: {icd}
-    - SNOMED: {snomed}
+### ABSOLUTE FORMAT RULES
+- Your ENTIRE output MUST be inside these tags ONLY:
 
-    REQUIREMENTS:
-    - Output ONLY valid JSON.
-    - Must include 12–30 timeline events.
-    - Timeline must span 1–5 years.
-    - Events must use medical terminology, acronyms, CMS language.
-    - Include: ED visits, imaging, specialty consults, complications, readmissions,
-      therapy failures, procedures with CPT codes, HCPCS injectables, labs, follow-up care.
+<JSON>
+{{
+  "timeline_summary": "...",
+  "timeline_table": [...]
+}}
+</JSON>
 
-    EVENT FIELDS:
-    - date (YYYY-MM-DD)
-    - location
-    - event_type
-    - description (3–5 sentence medical summary)
-    - actions_taken (tests, meds, interventions)
-    - outcome
+- NOTHING is allowed before <JSON> or after </JSON>.
+- Do NOT include explanation, markdown, or comments.
+- All quotes inside strings must be escaped.
+- Strings must NOT contain raw newlines. Use "\\n" for paragraph breaks.
 
-    ALSO INCLUDE:
-    "timeline_summary": a long multi-paragraph narrative describing disease evolution,
-    complications, imaging findings, medication adjustments, treatment response,
-    and overall clinical course.
+### PATIENT:
+Age: {age}
+Gender: {gender}
+Primary Diagnosis: {dx}
+ICD-10: {icd}
+SNOMED: {snomed}
 
-    JSON FORMAT:
+### CONTENT REQUIREMENTS
+- Timeline must span 1–5 years.
+- Include 12–30 medically realistic events.
+- Include ED visits, consults, therapies, complications, imaging, labs,
+  procedures (with CPT codes), medication adjustments, readmissions.
+- Summary must be long, technical, and professional.
+- Use abbreviations (CTA, NAD, DOE, SOB, BNP, A1c, LE edema, HPI, etc).
 
+### REQUIRED JSON FORMAT INSIDE <JSON> TAGS
+{{
+  "timeline_summary": "long narrative with \\n paragraphs",
+  "timeline_table": [
     {{
-      "timeline_summary": "long narrative",
-      "timeline_table": [
-        {{
-          "date": "YYYY-MM-DD",
-          "location": "string",
-          "event_type": "string",
-          "description": "string",
-          "actions_taken": "string",
-          "outcome": "string"
-        }}
-      ]
+      "date": "YYYY-MM-DD",
+      "location": "string",
+      "event_type": "string",
+      "description": "3-5 sentence clinical summary",
+      "actions_taken": "CPT/HCPCS, tests, meds",
+      "outcome": "clinical outcome"
     }}
+  ]
+}}
 
-    Generate ONLY valid JSON.
-    """
+Now produce ONLY this JSON, wrapped in <JSON> ... </JSON>.
+"""
 
     response = client.responses.create(
         model="gpt-4.1",

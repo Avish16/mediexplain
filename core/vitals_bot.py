@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 from openai import OpenAI
 
@@ -21,73 +22,121 @@ def _get_openai_client():
 client = _get_openai_client()
 
 
+# ============================================================
+# SUPER-ROBUST JSON EXTRACTOR (same strength as Lab Bot)
+# ============================================================
+
+def _safe_extract_json(text: str) -> dict:
+    """
+    Extremely robust JSON extractor for Vitals Bot.
+    Fixes:
+    - control chars
+    - unescaped quotes
+    - newlines inside strings
+    - trailing commas
+    - markdown fences
+    - partial blocks
+    """
+
+    # Remove markdown leftovers
+    text = text.replace("```json", "").replace("```", "")
+    text = text.strip()
+
+    # Remove all control characters
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+
+    # Replace raw newlines inside text
+    text = text.replace("\n", " ")
+
+    # Find ANY JSON block { ... }
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise ValueError("Vitals Bot: No JSON block found.")
+
+    json_text = match.group(0)
+
+    # Escape unescaped quotes inside strings
+    json_text = re.sub(r'(?<!\\)"(?=[^:{},\]\[])', '\\"', json_text)
+
+    # Remove trailing commas
+    json_text = re.sub(r",\s*(\}|\])", r"\1", json_text)
+
+    # FINAL ATTEMPT
+    try:
+        return json.loads(json_text)
+    except Exception as e:
+        raise ValueError(
+            f"\n❌ Vitals Bot JSON Clean Failed: {e}\n"
+            f"------- RAW START -------\n"
+            f"{json_text[:3500]}\n"
+            f"------- RAW END ---------"
+        )
+
+
+
+# ============================================================
+# MAIN BOT
+# ============================================================
+
 def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> dict:
     """
-    Generate a complete 15-vital-sign report with values, thresholds,
-    flags, units, metadata, and interpretation.
+    Generate a full vitals set — 15 vitals, metadata, flags, interpretation.
+    Fully JSON-safe after sanitizer.
     """
 
     dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
     icd = diagnosis.get("icd10_code", "")
 
     # timeline alignment
-    timeline_events = timeline.get("timeline_table", [])
-    if timeline_events:
-        first_date = timeline_events[0]["date"]
+    events = timeline.get("timeline_table", [])
+    if events:
+        first_date = events[0]["date"]
     else:
         first_date = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
-    You are generating a highly realistic Vitals Report for a fictional patient.
+    You are generating a highly realistic Vitals Report.
 
     Patient:
     - Age: {age}
     - Gender: {gender}
     - Primary Diagnosis: {dx} ({icd})
 
-    ALL vitals MUST be generated regardless of relevance to diagnosis.
-    ALL 15 vitals MUST appear.
-
-    Date alignment rule:
-    - Vitals must be collected ON or AFTER the timeline start date: {first_date}
-
-    CRITICAL RULES:
+    RULES:
     - Output ONLY valid JSON.
-    - No code fences, no commentary.
-    - JSON must start with '{{' and end with '}}'.
-    - Use medical language and clinician terminology.
-    - Include abnormal, borderline, and critical flags where appropriate.
+    - DO NOT use newlines inside strings.
+    - JSON must begin with '{{' and end with '}}'.
 
-    REQUIRED VITALS (all 15):
-      1. Heart Rate (HR)
-      2. Blood Pressure (Systolic/Diastolic)
-      3. Respiratory Rate (RR)
+    REQUIRED 15 VITALS:
+      1. Heart Rate
+      2. Blood Pressure
+      3. Respiratory Rate
       4. Temperature
-      5. Oxygen Saturation (SpO₂)
+      5. SpO₂
       6. Height
       7. Weight
-      8. Body Mass Index (BMI)
-      9. Pain Score (0–10)
-      10. Blood Glucose (POC)
-      11. Peak Expiratory Flow (PEF)
-      12. FiO₂ (Fraction of Inspired Oxygen)
-      13. Mean Arterial Pressure (MAP)
+      8. BMI
+      9. Pain Score
+      10. Blood Glucose
+      11. PEF
+      12. FiO₂
+      13. MAP
       14. Waist Circumference
-      15. Level of Consciousness (AVPU or GCS)
+      15. Level of Consciousness (AVPU/GCS)
 
-    REQUIRED OUTPUT STRUCTURE:
+    JSON FORMAT:
 
     {{
       "collection_metadata": {{
-         "collection_date": "YYYY-MM-DD",
-         "collection_time": "HH:MM",
-         "device": "string",
-         "location": "string"
+         "collection_date": "{first_date}",
+         "collection_time": "08:32",
+         "device": "Automated vitals monitor",
+         "location": "Inpatient room"
       }},
       "vitals": [
          {{
             "name": "string",
-            "value": "string or number",
+            "value": "number/string",
             "unit": "string",
             "reference_range": "string",
             "thresholds": {{
@@ -97,25 +146,20 @@ def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) 
                 "high_critical": "value or null"
             }},
             "flag": "H | L | C | ''",
-            "interpretation": "clinically technical interpretation"
+            "interpretation": "short clinician-style interpretation (no newlines)"
          }}
       ],
-      "clinical_summary": "LONG multi-paragraph provider interpretation using complex medical terminology, referencing abnormal vitals, linking findings to diagnosis, and describing clinical implications."
+      "clinical_summary": "LONG multi-paragraph summary using \\n for line breaks."
     }}
 
-    REQUIREMENTS:
-    - Use the patient’s age + gender to bias values.
-    - Use the diagnosis to bias abnormalities (if applicable).
-    - Produce realistic units, ranges, and interpretations.
-    - Interpretation MUST be highly medical and difficult for non-clinicians to understand.
+    Produce ONLY JSON. No extra commentary.
     """
 
     response = client.responses.create(
         model="gpt-4.1",
         input=prompt,
-        max_output_tokens=2500
+        max_output_tokens=2500,
     )
 
-    raw = response.output_text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    raw = response.output_text or ""
+    return _safe_extract_json(raw)
