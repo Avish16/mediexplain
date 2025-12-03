@@ -7,7 +7,7 @@ import requests
 from pypdf import PdfReader
 
 # =====================================================
-# CONFIG – 100 PMC OPEN-ACCESS MEDICAL ARTICLE LINKS
+# CONFIG – PMC OPEN-ACCESS MEDICAL ARTICLE LINKS
 # =====================================================
 ARTICLE_URLS = [
     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270588/",
@@ -121,7 +121,8 @@ ARTICLE_URLS = [
     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888219/",
 ]
 
-OUTPUT_DIR = "pdfs"
+PDF_DIR = "pdfs"
+HTML_DIR = "html"
 REQUEST_DELAY = 2.0
 
 HEADERS = {
@@ -132,22 +133,13 @@ HEADERS = {
 # HELPERS
 # =====================================================
 
-def pmc_to_pdf_url(article_url: str):
-    """
-    Convert a PMC article URL → direct PDF URL + filename.
-    Example:
-      https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/
-      → https://pmc.ncbi.nlm.nih.gov/articles/PMC1234567/pdf/
-    """
+def extract_pmcid(article_url: str):
     clean = article_url.split("?")[0].rstrip("/")
     m = re.search(r"/articles/(PMC[0-9]+)/?$", clean)
     if not m:
         logging.error(f"Could not extract PMCID from {article_url}")
         return None
-    pmcid = m.group(1)
-    pdf_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
-    filename = f"{pmcid}.pdf"
-    return pdf_url, filename
+    return m.group(1)
 
 
 def is_valid_pdf(path: str) -> bool:
@@ -161,27 +153,36 @@ def is_valid_pdf(path: str) -> bool:
         return False
 
 
-def download_pdf(pdf_url: str, out_path: str) -> bool:
-    """Download the PDF, check Content-Type AND validate with pypdf."""
+def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
+    """
+    Try to download the PDF.
+    Returns True if a valid PDF was saved, False otherwise.
+    """
+    pdf_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
+    out_path = os.path.join(PDF_DIR, f"{pmcid}.pdf")
+
+    # Skip if already downloaded and valid
+    if os.path.exists(out_path) and is_valid_pdf(out_path):
+        logging.info(f"PDF already exists and is valid: {out_path}")
+        return True
+
     try:
+        logging.info(f"Trying PDF: {pdf_url}")
         with requests.get(pdf_url, headers=HEADERS, timeout=30, stream=True) as r:
             if r.status_code != 200:
-                logging.error(f"Failed: {pdf_url}: HTTP {r.status_code}")
+                logging.warning(f"PDF not available (HTTP {r.status_code}) for {pdf_url}")
                 return False
 
             ctype = r.headers.get("Content-Type", "").lower()
-            # PMC usually returns application/pdf; occasionally others may appear
             if "pdf" not in ctype and "application/octet-stream" not in ctype:
-                logging.error(f"Not a PDF at {pdf_url} (Content-Type={ctype})")
+                logging.warning(f"PDF URL returned non-PDF content-type ({ctype}) for {pdf_url}")
                 return False
 
-            # write to disk
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(8192):
                     if chunk:
                         f.write(chunk)
 
-        # now validate with pypdf
         if not is_valid_pdf(out_path):
             try:
                 os.remove(out_path)
@@ -193,8 +194,7 @@ def download_pdf(pdf_url: str, out_path: str) -> bool:
         return True
 
     except Exception as e:
-        logging.error(f"Download error for {pdf_url}: {e}")
-        # cleanup partial file
+        logging.error(f"Error downloading PDF for {article_url}: {e}")
         if os.path.exists(out_path):
             try:
                 os.remove(out_path)
@@ -203,58 +203,69 @@ def download_pdf(pdf_url: str, out_path: str) -> bool:
         return False
 
 
+def download_html(article_url: str, pmcid: str) -> bool:
+    """
+    Download the HTML article page so it can be opened locally in a browser.
+    """
+    out_path = os.path.join(HTML_DIR, f"{pmcid}.html")
+
+    if os.path.exists(out_path):
+        logging.info(f"HTML already exists, skipping: {out_path}")
+        return True
+
+    try:
+        logging.info(f"Downloading HTML: {article_url}")
+        r = requests.get(article_url, headers=HEADERS, timeout=30)
+        if r.status_code != 200:
+            logging.error(f"Failed to download HTML for {article_url}: HTTP {r.status_code}")
+            return False
+
+        # Save as text so you can open it easily in a browser
+        with open(out_path, "w", encoding=r.encoding or "utf-8") as f:
+            f.write(r.text)
+
+        logging.info(f"Saved HTML: {out_path}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error downloading HTML for {article_url}: {e}")
+        return False
+
+
 # =====================================================
 # MAIN SCRIPT
 # =====================================================
 
 def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(PDF_DIR, exist_ok=True)
+    os.makedirs(HTML_DIR, exist_ok=True)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s"
     )
 
-    success_count = 0
-    fail_count = 0
-    skipped_existing = 0
-    failed_urls = []
+    pdf_success = 0
+    html_success = 0
 
     for idx, article_url in enumerate(ARTICLE_URLS, start=1):
         logging.info(f"[{idx}/{len(ARTICLE_URLS)}] {article_url}")
 
-        result = pmc_to_pdf_url(article_url)
-        if not result:
-            fail_count += 1
-            failed_urls.append(article_url)
+        pmcid = extract_pmcid(article_url)
+        if not pmcid:
             continue
 
-        pdf_url, filename = result
-        out_path = os.path.join(OUTPUT_DIR, filename)
+        # Always download HTML so you have a viewable file
+        if download_html(article_url, pmcid):
+            html_success += 1
 
-        if os.path.exists(out_path):
-            logging.info(f"Already exists, skipping: {out_path}")
-            skipped_existing += 1
-        else:
-            logging.info(f"Downloading: {pdf_url}")
-            ok = download_pdf(pdf_url, out_path)
+        # Try to download PDF as well (if available)
+        if download_pdf_if_available(article_url, pmcid):
+            pdf_success += 1
 
-            if ok:
-                success_count += 1
-            else:
-                fail_count += 1
-                failed_urls.append(article_url)
+        time.sleep(REQUEST_DELAY)
 
-            time.sleep(REQUEST_DELAY)
-
-    logging.info(
-        f"Done. Valid PDFs: {success_count}, "
-        f"failed: {fail_count}, skipped existing: {skipped_existing}"
-    )
-
-    if failed_urls:
-        logging.info("Failed URLs:")
-        for u in failed_urls:
-            logging.info(f"  {u}")
+    logging.info(f"Done. HTML files: {html_success}, PDFs: {pdf_success}")
 
 
 if __name__ == "__main__":
