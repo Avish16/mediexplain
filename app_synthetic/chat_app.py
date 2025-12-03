@@ -1,4 +1,5 @@
 try:
+    # Fix for Chroma + pysqlite3 in Streamlit / Codespaces
     __import__("pysqlite3")
     import sys as _sys
     _sys.modules["sqlite3"] = _sys.modules.pop("pysqlite3")
@@ -11,6 +12,22 @@ from pypdf import PdfReader
 import chromadb
 from chromadb.config import Settings
 from typing import List
+import json
+import os
+import sys
+import traceback
+
+# ---------------------------------------------------------
+# Ensure we can import app.bots.*
+# ---------------------------------------------------------
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.bots.explainer_bot import run_explainer
+from app.bots.labs_bot import run_labs
+from app.bots.meds_bot import run_meds
+from app.bots.careplan_bot import run_careplan
+from app.bots.snapshot_bot import run_snapshot
+from app.bots.support_bot import run_support
 
 # =========================================================
 # 1. CONFIG & CLIENT
@@ -20,7 +37,7 @@ st.set_page_config(page_title="MediExplain Chatbot", layout="wide")
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # =========================================================
-# 2. CHROMA-BASED LONG-TERM MEMORY MANAGER
+# 2. CHROMA-BASED LONG-TERM MEMORY
 # =========================================================
 class ChromaMemoryManager:
     """
@@ -32,10 +49,9 @@ class ChromaMemoryManager:
     """
 
     def __init__(self, path: str = "mediexplain_chroma"):
-        # Persistent client: uses local sqlite + disk
         self.client = chromadb.PersistentClient(
             path=path,
-            settings=Settings(anonymized_telemetry=False)
+            settings=Settings(anonymized_telemetry=False),
         )
         self.collection = self.client.get_or_create_collection("mediexplain_memory")
 
@@ -48,13 +64,10 @@ class ChromaMemoryManager:
         self.collection.add(
             ids=[doc_id],
             documents=[text],
-            metadatas=[{"user_id": user_id}]
+            metadatas=[{"user_id": user_id}],
         )
 
     def retrieve_memory(self, user_id: str, query: str, k: int = 5) -> List[str]:
-        """
-        Retrieve the top-k memories for this user based on semantic similarity.
-        """
         try:
             result = self.collection.query(
                 query_texts=[query],
@@ -69,7 +82,6 @@ class ChromaMemoryManager:
 
 memory = ChromaMemoryManager()
 
-
 # =========================================================
 # 3. SESSION STATE INIT
 # =========================================================
@@ -82,7 +94,6 @@ if "pdf_text" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state.user_id = None  # login identity (email / ID)
 
-
 # =========================================================
 # 4. LOGIN / USER IDENTIFICATION
 # =========================================================
@@ -91,7 +102,7 @@ st.sidebar.title("Login")
 if st.session_state.user_id is None:
     login_id = st.sidebar.text_input(
         "Enter your email or patient ID",
-        placeholder="e.g. john.doe@example.com"
+        placeholder="e.g. john.doe@example.com",
     )
     if st.sidebar.button("Continue") and login_id.strip():
         st.session_state.user_id = login_id.strip()
@@ -112,16 +123,17 @@ if st.session_state.user_id is None:
 
 user_id = st.session_state.user_id
 
-
 # =========================================================
-# 5. MAIN HEADER & MODE SWITCH
+# 5. HEADER & MODE SWITCH
 # =========================================================
 st.title("🩺 MediExplain – Your Medical Report Companion")
 
 mode = st.radio(
     "Choose AI Explanation Mode:",
-    ["Patient Mode (Simple & Friendly)", "Caregiver Mode (Technical & Clinical)"],
-    horizontal=False,
+    [
+        "Patient Mode (Simple & Friendly)",
+        "Caregiver Mode (Technical & Clinical)",
+    ],
 )
 
 st.markdown(
@@ -130,7 +142,6 @@ st.markdown(
 > It helps you understand your reports but cannot diagnose or provide medical treatment.
 """
 )
-
 
 # =========================================================
 # 6. PDF UPLOAD & EXTRACTION
@@ -155,10 +166,9 @@ if uploaded_pdf is not None:
         else:
             st.write("_No text could be extracted from this PDF._")
 
-
-# =========================================================
-# 7. MEMORY-AWARE UTILS
-# =========================================================
+# ---------------------------------------------------------
+# 7. MEMORY SNIPPET EXTRACTOR
+# ---------------------------------------------------------
 def extract_memory_snippet(user_input: str, assistant_reply: str) -> str:
     """
     Ask the model to summarize long-term relevant info from this exchange.
@@ -191,77 +201,158 @@ Assistant replied:
     text = resp.choices[0].message.content.strip()
     return text
 
-
-def generate_response(user_input: str, mode: str) -> str:
+# ---------------------------------------------------------
+# 8. ROUTER: DECIDE WHICH BOT TO CALL
+# ---------------------------------------------------------
+def route_to_specialist_bot(
+    mode: str,
+    question: str,
+    pdf_text: str,
+    long_term_memory: List[str],
+) -> str:
     """
-    Generate a MediExplain response using:
-    - Persona (patient vs caregiver)
-    - Long-term memory (ChromaDB)
-    - Uploaded PDF context
-    - Short-term chat history
+    Uses a small GPT call to choose which specialist bot to call.
+
+    Available bots:
+    - EXPLAINER  : general explanation of report / conditions
+    - LABS       : questions about lab values, blood tests, panels
+    - MEDS       : questions about medications, doses, side-effects
+    - CAREPLAN   : follow-up care, monitoring, lifestyle, red-flags
+    - SNAPSHOT   : high-level summary of the whole case
+    - SUPPORT    : emotional support, coping, communication tips
     """
-    # Persona
-    if "Patient Mode" in mode:
-        persona = (
-            "Use very simple, friendly language. Avoid medical jargon where possible. "
-            "Explain step-by-step, be reassuring, and focus on clarity."
-        )
-    else:
-        persona = (
-            "Use clinically accurate language appropriate for a caregiver or clinician. "
-            "You may use medical terminology and provide more detailed reasoning, "
-            "but still stay concise and clear."
-        )
 
-    # Retrieve long-term memory from Chroma
-    ltm_snippets = memory.retrieve_memory(user_id, user_input, k=5)
-    long_term_context = "\n- ".join(ltm_snippets) if ltm_snippets else "None available."
+    ltm_str = "\n- ".join(long_term_memory) if long_term_memory else "None"
 
-    system_content = f"""
-You are MediExplain, an AI assistant that helps people understand their medical
-information in a safe, responsible way.
+    router_system = """
+You are a routing agent for MediExplain.
 
-User ID: {user_id}
+Your job:
+Given the user question and context, decide which internal specialist
+bot is the **single best fit** to answer.
 
-Persona:
-{persona}
+Return STRICT JSON only, no commentary, using this schema:
 
-Long-term memory for this user (important past facts, if any):
-- {long_term_context}
+{
+  "bot": "EXPLAINER | LABS | MEDS | CAREPLAN | SNAPSHOT | SUPPORT",
+  "reason": "short explanation of why this bot is appropriate"
+}
 
-Current uploaded medical report (if any):
---------------------
-{st.session_state.pdf_text or "No report uploaded for this session."}
---------------------
-
-Always:
-- Be clear about what you know from the report vs what you are inferring.
-- Encourage the user to discuss important findings with their doctor.
-- Do NOT provide definitive diagnoses or treatment plans.
+Guidelines:
+- Use LABS for questions about blood work, lab values, reference ranges,
+  abnormal / high / low results, or interpretation of specific tests
+  like CBC, CMP, lipid panel, HbA1c, troponin, etc.
+- Use MEDS for medication names, doses, timing, interactions, side effects,
+  what a drug is for, how long to take it, etc.
+- Use CAREPLAN for follow-up schedule, monitoring, lifestyle changes,
+  red-flag symptoms, rehabilitation, diet / exercise advice (linked to the
+  medical condition), and care-coordination questions.
+- Use SNAPSHOT when the user asks for an overall summary of the case,
+  “what is going on with me?”, “big picture”, or wants a step-by-step
+  story of the illness and treatment.
+- Use SUPPORT when the main focus is emotions, anxiety, fear,
+  talking to family, how to ask the doctor questions, or general reassurance.
+- In all other cases (or if you are unsure), use EXPLAINER.
 """
 
-    messages = [{"role": "system", "content": system_content}]
+    user_payload = f"""
+MODE: {mode}
 
-    # Short-term conversation history
-    for m in st.session_state.messages:
-        messages.append({"role": m["role"], "content": m["content"]})
+USER QUESTION:
+{question}
 
-    # Latest user message
-    messages.append({"role": "user", "content": user_input})
+UPLOADED REPORT (if any):
+{pdf_text[:4000]}
 
-    # Call OpenAI
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.3,
+LONG-TERM MEMORY SNIPPETS:
+- {ltm_str}
+"""
+
+    router_resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0.0,
+        messages=[
+            {"role": "system", "content": router_system},
+            {"role": "user", "content": user_payload},
+        ],
     )
 
-    reply = response.choices[0].message.content
-    return reply
+    raw = router_resp.choices[0].message.content.strip()
 
+    # Try to parse JSON safely
+    try:
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw)
+        bot = data.get("bot", "EXPLAINER").upper()
+    except Exception:
+        bot = "EXPLAINER"
+
+    if bot not in {"EXPLAINER", "LABS", "MEDS", "CAREPLAN", "SNAPSHOT", "SUPPORT"}:
+        bot = "EXPLAINER"
+
+    return bot
+
+# ---------------------------------------------------------
+# 9. GENERAL ORCHESTRATOR
+# ---------------------------------------------------------
+def generate_orchestrated_response(user_input: str, mode: str) -> str:
+    """
+    1. Pull long-term memory for this user.
+    2. Ask router which specialist bot to use.
+    3. Call the corresponding local bot function.
+    """
+
+    pdf_text = st.session_state.pdf_text or ""
+    ltm_snippets = memory.retrieve_memory(user_id, user_input, k=5)
+
+    chosen_bot = route_to_specialist_bot(mode, user_input, pdf_text, ltm_snippets)
+
+    try:
+        if chosen_bot == "LABS":
+            reply = run_labs(user_input, mode, pdf_text, ltm_snippets)
+        elif chosen_bot == "MEDS":
+            reply = run_meds(user_input, mode, pdf_text, ltm_snippets)
+        elif chosen_bot == "CAREPLAN":
+            reply = run_careplan(user_input, mode, pdf_text, ltm_snippets)
+        elif chosen_bot == "SNAPSHOT":
+            reply = run_snapshot(user_input, mode, pdf_text, ltm_snippets)
+        elif chosen_bot == "SUPPORT":
+            reply = run_support(user_input, mode, pdf_text, ltm_snippets)
+        else:  # EXPLAINER or fallback
+            reply = run_explainer(user_input, mode, pdf_text, ltm_snippets)
+
+        # Add a tiny footer so you can debug routing if needed (optional)
+        reply += f"\n\n---\n_(Answered by: {chosen_bot} bot)_"
+
+        return reply
+
+    except Exception as e:
+        # If specialist bot crashes, fall back to a simple explainer using GPT directly
+        traceback.print_exc()
+        fallback_prompt = f"""
+You are MediExplain. The specialist pipeline failed, so you must answer
+directly.
+
+MODE: {mode}
+
+User question:
+{user_input}
+
+Report (if any):
+{pdf_text}
+
+Answer in a way that matches the MODE, and remind the user that this
+does not replace a doctor's advice.
+"""
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": fallback_prompt}],
+            temperature=0.3,
+        )
+        return resp.choices[0].message.content.strip()
 
 # =========================================================
-# 8. CHAT HISTORY UI
+# 10. CHAT HISTORY UI
 # =========================================================
 st.write("Conversation")
 
@@ -271,37 +362,38 @@ for msg in st.session_state.messages:
     else:
         st.chat_message("assistant").markdown(msg["content"])
 
-
 # =========================================================
-# 9. CHAT INPUT & FLOW
+# 11. CHAT INPUT & FLOW
 # =========================================================
-user_input = st.chat_input("Ask a question about your medical report or health history...")
+user_input = st.chat_input(
+    "Ask a question about your medical report, labs, medications, or care plan..."
+)
 
 if user_input:
-    # Add user message to short-term memory
+    # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     with st.spinner("MediExplain is thinking..."):
-        assistant_reply = generate_response(user_input, mode)
+        assistant_reply = generate_orchestrated_response(user_input, mode)
 
-    # Add assistant reply to short-term memory
-    st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+    # Add assistant reply to chat history
+    st.session_state.messages.append(
+        {"role": "assistant", "content": assistant_reply}
+    )
 
     # Display reply
     st.chat_message("assistant").markdown(assistant_reply)
 
-    # Extract and store long-term memory into Chroma
+    # Try to store a long-term memory snippet
     try:
         memory_snippet = extract_memory_snippet(user_input, assistant_reply)
         if memory_snippet:
             memory.add_memory(user_id, memory_snippet)
     except Exception:
-        # Don't break the app if memory extraction fails
         pass
 
-
 # =========================================================
-# 10. CLEAR CONVERSATION BUTTON
+# 12. CLEAR CONVERSATION BUTTON
 # =========================================================
 col1, col2 = st.columns([1, 2])
 with col1:
