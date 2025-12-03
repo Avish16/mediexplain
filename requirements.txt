@@ -3,7 +3,7 @@ openai>=1.40.0
 chromadb
 beautifulsoup4==4.12.3
 lxml==5.2.1
-pysqlite3-binary==0.5.3
+pysqlite3-binary
 requests==2.32.3
 duckdb==1.0.0
 orjson==3.10.7
@@ -13,7 +13,3 @@ pandas==2.2.2
 sentence-transformers==3.0.1
 pypdf
 tqdm
-
-<<<<<<< HEAD
-=======
->>>>>>> 71ac918 (Commit 2)
