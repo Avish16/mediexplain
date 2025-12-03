@@ -45,7 +45,7 @@ STRICT RULES:
 - Output ONLY plain text.
 - NO JSON.
 - NO markdown.
-- NO brackets of any kind (no [], {}, ()).
+- NO brackets of any kind (no [], curly braces, ()).
 - NO bullet symbols (•, -, *, >).
 - ONLY use:
    LAB SUMMARY:
