@@ -23,13 +23,28 @@ client = _get_openai_client()
 # ============================================================
 #  MAIN TIMELINE BOT (PLAIN TEXT)
 # ============================================================
-def generate_timeline_llm(age: int, gender: str, diagnosis: dict) -> str:
+def generate_timeline_llm(age: int, gender: str, diagnosis):
+    """
+    Generate a multi-year clinical timeline in plain text.
+    Diagnosis may be dict or string — both handled safely.
+    """
+
+    # ------------------------------------------------------------
+    # FIX: Normalize diagnosis input
+    # ------------------------------------------------------------
+    if isinstance(diagnosis, str):
+        diagnosis = {
+            "primary_diagnosis": diagnosis,
+            "icd10_code": "",
+            "snomed_code": ""
+        }
+
     dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
     icd = diagnosis.get("icd10_code", "")
     snomed = diagnosis.get("snomed_code", "")
 
     # ------------------------------------------------------------
-    # NOTE: NO INDENTATION inside prompt — avoids LLM formatting drift.
+    # PROMPT
     # ------------------------------------------------------------
     prompt = f"""
 You are generating a multi-year CLINICAL TIMELINE for a synthetic patient.
@@ -54,14 +69,13 @@ TIMELINE TABLE:
    Outcome: <text>
 
 2. <next event> …
-(Continue numbering up to 12–20 events)
 
-CONTENTS REQUIRED:
+CONTENT REQUIREMENTS:
 - 12–20 chronological events spanning 1–5 years.
 - Include ED visits, imaging, labs, procedures, follow-ups.
 - Use clinician abbreviations: SOB, DOE, CTA, EF%, BNP, CRT, A&O×3.
-- Description paragraphs MUST NOT contain line breaks in the middle.
-- All content must be medically realistic.
+- Description paragraphs MUST NOT contain line breaks inside them.
+- All content MUST be medically realistic.
 
 PATIENT DATA:
 Age: {age}
@@ -76,7 +90,7 @@ Return ONLY the final plain-text timeline.
     last_error = None
 
     # ------------------------------------------------------------
-    # RETRY SAFETY NET — try 3 times
+    # RETRY LOOP (3 attempts)
     # ------------------------------------------------------------
     for attempt in range(3):
         try:
@@ -89,14 +103,14 @@ Return ONLY the final plain-text timeline.
             text = (response.output_text or "").strip()
 
             # --------------------------------------------------
-            # HARD CLEANUP — remove any forbidden characters
+            # CLEANUP — remove forbidden characters
             # --------------------------------------------------
-            banned = ["[", "]", "{", "}", "<", ">", "*", "•"]
+            banned = ["[", "]", "{", "}", "<", ">", "*", "•", "(", ")"]
             for b in banned:
                 text = text.replace(b, "")
 
             # --------------------------------------------------
-            # Ensure mandatory headers exist
+            # REQUIRED HEADER CHECKS
             # --------------------------------------------------
             if "TIMELINE SUMMARY:" not in text:
                 raise ValueError("Missing 'TIMELINE SUMMARY:'")
@@ -105,10 +119,10 @@ Return ONLY the final plain-text timeline.
                 raise ValueError("Missing 'TIMELINE TABLE:'")
 
             # --------------------------------------------------
-            # Ensure numbering is present
+            # Ensure numbering exists
             # --------------------------------------------------
             if "1." not in text:
-                raise ValueError("Timeline does not contain numbered events.")
+                raise ValueError("Timeline missing numbered events.")
 
             return text
 

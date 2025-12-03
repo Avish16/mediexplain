@@ -11,4 +11,3 @@ chat_app = st.Page("/workspaces/mediexplain/app_synthetic/chat_app.py", title="M
 pages = {"Home": [Synthetic_App, chat_app]}
 
 st.navigation(pages).run()
- 

@@ -10,34 +10,82 @@ except ImportError:
     st = None
 
 
+# ----------------------------------------------------
+# OPENAI CLIENT
+# ----------------------------------------------------
 def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key and st is not None:
         api_key = st.secrets.get("OPENAI_API_KEY", None)
     if not api_key:
-            raise RuntimeError("OPENAI_API_KEY missing in environment or Streamlit secrets.")
+        raise RuntimeError("OPENAI_API_KEY missing in environment or Streamlit secrets.")
     return OpenAI(api_key=api_key)
 
 
 client = _get_openai_client()
 
 
+# ----------------------------------------------------
+# ROBUST JSON EXTRACTOR (Billing Bot)
+# ----------------------------------------------------
 def _safe_extract_json(text: str) -> dict:
-    """Extract and sanitize JSON from LLM output for billing bot."""
+    """
+    Defensive JSON extractor for Billing Bot:
+    - strips markdown fences
+    - removes control chars
+    - flattens newlines
+    - removes illegal backslash escapes
+    - fixes double braces + trailing commas
+    - parses JSON or raises with helpful debug info
+    """
+    if not text:
+        raise ValueError("Billing Bot: Empty model output.")
+
+    # Remove accidental code fences
     text = text.replace("```json", "").replace("```", "").strip()
+
+    # Remove invisible control chars
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
 
+    # Flatten newlines
+    text = text.replace("\n", " ")
+
+    # Remove illegal escapes like \q, \Z (keep only valid JSON escapes)
+    text = re.sub(r'\\(?!["\\/bfnrtu])', "", text)
+
+    # Grab first JSON-looking object
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
-        raise ValueError("Billing Bot: No JSON object found.")
+        raise ValueError(
+            "Billing Bot: No JSON object found in output.\n"
+            f"RAW START:\n{text[:1500]}\n..."
+        )
+
     json_text = match.group(0)
+
+    # Fix double braces that sometimes sneak in
+    json_text = json_text.replace("{{", "{").replace("}}", "}")
+
+    # Remove trailing commas before } or ]
+    json_text = re.sub(r",\s*(\})", r"\1", json_text)
+    json_text = re.sub(r",\s*(\])", r"\1", json_text)
+
+    # Collapse whitespace
+    json_text = re.sub(r"\s+", " ", json_text)
 
     try:
         return json.loads(json_text)
     except Exception as e:
-        raise ValueError(f"Billing Bot JSON parse error: {e}\nRaw: {json_text[:400]}...")
+        raise ValueError(
+            f"\n❌ Billing Bot JSON parse error: {e}\n"
+            f"--------- RAW JSON START ---------\n{json_text[:4000]}\n"
+            f"--------- RAW JSON END -----------"
+        )
 
 
+# ----------------------------------------------------
+# MAIN LLM CALL (Billing Bot)
+# ----------------------------------------------------
 def generate_billing_summary_llm(
     age: int,
     gender: str,
@@ -51,9 +99,10 @@ def generate_billing_summary_llm(
 ) -> dict:
     """
     Generate a synthetic but realistic billing/coding summary:
-    - ICD-10 / secondary diagnoses
+    - ICD-10 primary + secondary diagnoses
     - CPT / HCPCS for procedures and diagnostics
-    - DRG / HCC risk
+    - DRG grouping
+    - HCC risk commentary
     - Line-item charges with payer vs patient responsibility
     """
 
@@ -180,18 +229,26 @@ Return ONLY valid JSON in this exact structure:
 }}
 
 RULES:
-- All codes must be **plausible** for the described case (they do not need to be perfect).
-- ICD-10 and CPT/HCPCS should be consistent with diagnosis, procedures, labs, imaging, and meds.
+- All codes must be PLAUSIBLE for the described case (they do not need to be perfect).
+- ICD-10 and CPT/HCPCS must be consistent with diagnosis, procedures, labs, imaging, and meds.
 - DRG and HCC discussion should sound like real coder/biller language.
 - Monetary values should be realistic at US hospital scale (e.g., thousands to tens of thousands total).
-- Output ONLY the JSON object, no extra commentary.
+- Output ONLY the JSON object, no extra commentary, no markdown.
 """
 
-    response = client.responses.create(
-        model="gpt-4.1",
-        input=prompt,
-        max_output_tokens=3500,
-    )
+    last_error = None
 
-    raw = response.output_text or ""
-    return _safe_extract_json(raw)
+    for attempt in range(3):
+        try:
+            response = client.responses.create(
+                model="gpt-4.1",
+                input=prompt,
+                max_output_tokens=3500,
+            )
+            raw = (response.output_text or "").strip()
+            return _safe_extract_json(raw)
+        except Exception as e:
+            print(f"[Billing Bot] Attempt {attempt + 1} failed:", e)
+            last_error = e
+
+    raise ValueError(f"Billing Bot failed after 3 attempts: {last_error}")

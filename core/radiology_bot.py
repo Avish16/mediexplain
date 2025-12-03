@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import base64
 from datetime import datetime
 from openai import OpenAI
 
@@ -10,6 +11,9 @@ except ImportError:
     st = None
 
 
+# ----------------------------------------------------
+# OPENAI CLIENT
+# ----------------------------------------------------
 def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key and st is not None:
@@ -22,9 +26,11 @@ def _get_openai_client():
 client = _get_openai_client()
 
 
+# ----------------------------------------------------
+# JSON EXTRACTOR
+# ----------------------------------------------------
 def _safe_extract_json(text: str) -> dict:
     """Extracts and sanitizes JSON from LLM output for radiology metadata."""
-
     text = text.replace("```json", "").replace("```", "").strip()
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
 
@@ -33,21 +39,20 @@ def _safe_extract_json(text: str) -> dict:
         raise ValueError("Radiology Bot: No JSON object found in LLM output.")
     json_text = match.group(0)
 
-    # Minimal cleanup; radiology payload is smaller than timeline
     try:
         return json.loads(json_text)
     except Exception as e:
         raise ValueError(f"Radiology Bot: JSON parse failed: {e}\nRaw: {json_text[:500]}...")
 
 
+# ----------------------------------------------------
+# MAIN RADIology BOT
+# ----------------------------------------------------
 def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> dict:
     """
     Generate radiology study metadata + image prompts + dense findings/impression,
-    then call the Image API to create grayscale radiology-like images.
-
-    Returns a dict with:
-      - studies: list of old + recent studies
-      - each study has metadata, findings, impression, and generated image URL.
+    then call the Image API to create grayscale radiology-like images and
+    save them as PNGs under core/assets/.
     """
 
     dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
@@ -58,8 +63,8 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
     timeline_events = timeline.get("timeline_table", [])
     if timeline_events:
         try:
-            first_date = timeline_events[0]["date"]
-            last_date = timeline_events[-1]["date"]
+            first_date = timeline_events[0].get("date", "")
+            last_date = timeline_events[-1].get("date", "")
         except Exception:
             today = datetime.now().strftime("%Y-%m-%d")
             first_date = today
@@ -110,7 +115,7 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
     {{
       "studies": [
         {{
-          "role": "old",  // either "old" or "recent"
+          "role": "old",
           "study_date": "YYYY-MM-DD",
           "modality": "X-ray | CT | MRI | Ultrasound | etc.",
           "body_region": "e.g., chest, abdomen, brain, spine, knee",
@@ -150,14 +155,17 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
     raw = response.output_text or ""
     meta = _safe_extract_json(raw)
 
-    # 2) For each study, generate an actual image using the Images API
+    # 2) Prepare assets directory: core/assets/
+    assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+    os.makedirs(assets_dir, exist_ok=True)
+
+    # 3) For each study, generate an actual image and SAVE as PNG
     studies = meta.get("studies", [])
-    for study in studies:
+    for idx, study in enumerate(studies):
         prompt_text = study.get("image_prompt", "")
         if not prompt_text:
             continue
 
-        # Enforce grayscale radiology style at image level too
         full_image_prompt = (
             prompt_text
             + " Radiology-style grayscale medical image, no color, no text, high contrast, clinical X-ray/CT/MRI aesthetic."
@@ -167,11 +175,29 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
             model="gpt-image-1",
             prompt=full_image_prompt,
             size="1024x1024",
-            n=1
+            n=1,
+            response_format="b64_json",
         )
 
-        # You can choose url or base64; here we use URL for simplicity
-        image_url = img_resp.data[0].url
-        study["image_url"] = image_url
+        b64_data = img_resp.data[0].b64_json
+        img_bytes = base64.b64decode(b64_data)
+
+        # Build a safe filename like: radiology_old_chest_2025-12-03.png
+        role = study.get("role", f"study{idx}")
+        body_region = study.get("body_region", "region")
+        study_date = study.get("study_date", "unknown-date")
+
+        raw_name = f"radiology_{role}_{body_region}_{study_date}".lower()
+        safe_name = re.sub(r"[^a-z0-9_-]+", "_", raw_name)
+        filename = f"{safe_name}.png"
+
+        file_path = os.path.join(assets_dir, filename)
+        with open(file_path, "wb") as f:
+            f.write(img_bytes)
+
+        # Save both local path and a simple relative path for downstream use
+        study["image_path"] = file_path
+        # If you still want to keep a URL-like field for compatibility:
+        study["image_url"] = file_path
 
     return meta

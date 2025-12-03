@@ -1,89 +1,151 @@
-def render_section(title: str, content: str) -> str:
-    border = "=" * 80
-    return f"{border}\n{title}\n{border}\n{content}\n\n"
+import json
+import textwrap
+
+PAGE_BREAK = "\f"   # Form-feed — universally respected as a new-page marker
 
 
+# ----------------------------------------------------
+# Utility Formatting
+# ----------------------------------------------------
+def _header(title: str) -> str:
+    border = "=" * 90
+    return f"{border}\n{title}\n{border}\n"
+
+
+def _table_block(title: str, data: dict) -> str:
+    out = _header(title)
+    if not isinstance(data, dict):
+        return out + "(no data)\n"
+
+    longest_key = max(len(k) for k in data.keys())
+    for k, v in data.items():
+        out += f"{k:<{longest_key}} : {v}\n"
+    return out
+
+
+def _json_block(title: str, obj: dict) -> str:
+    pretty = json.dumps(obj, indent=2, ensure_ascii=False)
+    return f"{_header(title)}{pretty}\n"
+
+
+def _text_block(title: str, text: str) -> str:
+    wrapped = textwrap.fill(text, width=90)
+    return f"{_header(title)}{wrapped}\n"
+
+
+def _page(content: str) -> str:
+    return content + "\n" + PAGE_BREAK + "\n"
+
+
+# ----------------------------------------------------
+# RENDERER CORE
+# ----------------------------------------------------
 def render_patient_record(patient_record: dict, safety_labels: dict, consistency: dict) -> str:
     """
-    Converts JSON into readable medical text sections.
+    NEW PAGE-PER-SECTION RENDERER
+    Clean formatting for a medical PDF.
     """
-    out = ""
 
-    pr = patient_record["patient_record"]
+    out = []
+    pr = patient_record.get("patient_record", {})
 
-    # DEMOGRAPHICS
-    demo = pr["demographics"]
-    demo_text = "\n".join([f"{k}: {v}" for k, v in demo.items()])
-    out += render_section("PATIENT DEMOGRAPHICS", demo_text)
+    # ----------------------------------------------------
+    # 1) DEMOGRAPHICS — table format
+    # ----------------------------------------------------
+    demo = pr.get("demographics", {})
+    out.append(_page(_table_block("PATIENT DEMOGRAPHICS", demo)))
 
-    # DIAGNOSIS
-    dx = pr["diagnosis"]
+    # ----------------------------------------------------
+    # 2) DIAGNOSIS — narrative text
+    # ----------------------------------------------------
+    dx = pr.get("diagnosis", {})
     dx_text = "\n".join([f"{k}: {v}" for k, v in dx.items()])
-    out += render_section("PRIMARY DIAGNOSIS", dx_text)
+    out.append(_page(_text_block("PRIMARY DIAGNOSIS", dx_text)))
 
-    # TIMELINE
-    tl = pr["timeline"]
-    tl_text = tl["timeline_summary"] + "\n\nEvents:\n"
-    for ev in tl["timeline_table"]:
-        tl_text += f"- {ev['date']} | {ev['event_type']} | {ev['description']}\n"
-    out += render_section("CLINICAL TIMELINE", tl_text)
+    # ----------------------------------------------------
+    # 3) TIMELINE — narrative + table
+    # ----------------------------------------------------
+    tl = pr.get("timeline", {})
+    timeline_summary = tl.get("timeline_summary", "No summary available.")
 
-    # LABS
-    labs = pr["labs"]
-    labs_text = json.dumps(labs, indent=2)
-    out += render_section("LABORATORY RESULTS", labs_text)
+    tl_events = ""
+    for ev in tl.get("timeline_table", []):
+        tl_events += f"- {ev.get('date')} | {ev.get('event_type')} | {ev.get('description')}\n"
 
-    # VITALS
-    vit = pr["vitals"]
-    vit_text = json.dumps(vit, indent=2)
-    out += render_section("VITAL SIGNS", vit_text)
+    tl_full = f"{timeline_summary}\n\nEVENTS:\n{tl_events}"
+    out.append(_page(_text_block("CLINICAL TIMELINE", tl_full)))
 
-    # RADIOLOGY
-    rad = pr["radiology"]
-    rad_text = rad["radiology_summary"]
-    out += render_section("RADIOLOGY INTERPRETATION", rad_text)
+    # ----------------------------------------------------
+    # 4) LAB RESULTS — JSON block
+    # ----------------------------------------------------
+    labs = pr.get("labs", {})
+    out.append(_page(_json_block("LABORATORY RESULTS", labs)))
 
-    # PROCEDURES
-    procs = pr["procedures"]
-    procs_text = json.dumps(procs, indent=2)
-    out += render_section("PROCEDURES", procs_text)
+    # ----------------------------------------------------
+    # 5) VITAL SIGNS — JSON block
+    # ----------------------------------------------------
+    vitals = pr.get("vitals", {})
+    out.append(_page(_json_block("VITAL SIGNS", vitals)))
 
-    # PATHOLOGY
-    path = pr["pathology"]
-    path_text = json.dumps(path, indent=2)
-    out += render_section("PATHOLOGY REPORT", path_text)
+    # ----------------------------------------------------
+    # 6) RADIOLOGY — narrative
+    # ----------------------------------------------------
+    rad = pr.get("radiology", {})
+    out.append(_page(_text_block("RADIOLOGY SUMMARY", rad.get("radiology_summary", ""))))
 
-    # CLINICAL NOTES
-    notes = pr["clinical_notes"]
-    notes_text = json.dumps(notes, indent=2)
-    out += render_section("PHYSICIAN CLINICAL NOTES", notes_text)
+    # ----------------------------------------------------
+    # 7) PROCEDURES — JSON block
+    # ----------------------------------------------------
+    procs = pr.get("procedures", {})
+    out.append(_page(_json_block("PROCEDURES", procs)))
 
-    # NURSING NOTES
-    nn = pr["nursing_notes"]
-    nn_text = json.dumps(nn, indent=2)
-    out += render_section("NURSING NOTES", nn_text)
+    # ----------------------------------------------------
+    # 8) PATHOLOGY — JSON block (long narrative inside)
+    # ----------------------------------------------------
+    pathology = pr.get("pathology", {})
+    out.append(_page(_json_block("PATHOLOGY REPORT", pathology)))
 
-    # MEDICATIONS
-    meds = pr["medications"]
-    meds_text = json.dumps(meds, indent=2)
-    out += render_section("MEDICATION PLAN", meds_text)
+    # ----------------------------------------------------
+    # 9) CLINICAL NOTES — JSON block
+    # ----------------------------------------------------
+    notes = pr.get("clinical_notes", {})
+    out.append(_page(_json_block("CLINICAL NOTES", notes)))
 
-    # PRESCRIPTIONS
-    rx = pr["prescriptions"]
-    rx_text = json.dumps(rx, indent=2)
-    out += render_section("PRESCRIPTIONS", rx_text)
+    # ----------------------------------------------------
+    # 10) NURSING NOTES — JSON block
+    # ----------------------------------------------------
+    nursing = pr.get("nursing_notes", {})
+    out.append(_page(_json_block("NURSING NOTES", nursing)))
 
-    # BILLING
-    bill = pr["billing"]
-    bill_text = json.dumps(bill, indent=2)
-    out += render_section("BILLING SUMMARY", bill_text)
+    # ----------------------------------------------------
+    # 11) MEDICATION PLAN — JSON block
+    # ----------------------------------------------------
+    meds = pr.get("medications", {})
+    out.append(_page(_json_block("MEDICATION PLAN", meds)))
 
-    # SAFETY LABELS
-    safe_text = json.dumps(safety_labels, indent=2)
-    out += render_section("SAFETY LABELS", safe_text)
+    # ----------------------------------------------------
+    # 12) PRESCRIPTIONS — JSON block
+    # ----------------------------------------------------
+    rx = pr.get("prescriptions", {})
+    out.append(_page(_json_block("PRESCRIPTIONS", rx)))
 
-    # CONSISTENCY
-    cons_text = json.dumps(consistency, indent=2)
-    out += render_section("CONSISTENCY REPORT", cons_text)
+    # ----------------------------------------------------
+    # 13) BILLING — JSON block
+    # ----------------------------------------------------
+    billing = pr.get("billing", {})
+    out.append(_page(_json_block("BILLING SUMMARY", billing)))
 
-    return out
+    # ----------------------------------------------------
+    # 14) SAFETY LABELS — JSON block
+    # ----------------------------------------------------
+    out.append(_page(_json_block("SAFETY LABELS", safety_labels)))
+
+    # ----------------------------------------------------
+    # 15) CONSISTENCY REPORT — JSON block
+    # ----------------------------------------------------
+    out.append(_page(_json_block("CONSISTENCY REPORT", consistency)))
+
+    # ----------------------------------------------------
+    # MERGE ALL
+    # ----------------------------------------------------
+    return "".join(out)

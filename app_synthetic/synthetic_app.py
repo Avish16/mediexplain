@@ -230,6 +230,48 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             gender,
             diagnosis,
         )
+        
+        # =============== FIX TIMELINE STRING → TIMELINE DICT ===============
+        from datetime import datetime
+
+        if isinstance(timeline, str):
+
+            try:
+                # Extract summary
+                if "TIMELINE SUMMARY:" in timeline:
+                    summary = timeline.split("TIMELINE SUMMARY:")[1]
+                    summary = summary.split("TIMELINE TABLE:")[0].strip()
+                else:
+                    summary = timeline[:200]
+
+                timeline_dict = {
+                    "timeline_summary": summary,
+                    "timeline_table": []
+                }
+
+                # Extract events by regex
+                import re
+                event_blocks = re.split(r"\n(?=\d+\.)", timeline)
+                for block in event_blocks:
+                    block = block.strip()
+                    if not block:
+                        continue
+                    # first line "1. 2023-05-02 – ED Visit"
+                    first_line = block.split("\n")[0]
+                    timeline_dict["timeline_table"].append({
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "event_type": "Event",
+                        "description": first_line
+                    })
+
+                timeline = timeline_dict
+
+            except Exception as e:
+                st.error("❌ Timeline → Dict conversion failed")
+                st.code(str(e))
+                raise e
+
+
 
         # 4) LAB BOT
         labs = run_step(
@@ -252,22 +294,31 @@ if st.button("🚀 Generate FULL Synthetic Case"):
         )
 
         # 6) RADIOLOGY BOT (includes image generation)
-        radiology = run_step(
-            "Radiology Bot",
-            generate_radiology_studies_llm,
-            age,
-            gender,
-            diagnosis,
-            timeline,
-        )
+        # radiology = 'NONE' 
 
-        # Collect URLs for PDF later (if present)
-        radiology_image_urls = []
-        if isinstance(radiology, dict):
-            for study in radiology.get("studies", []):
-                url = study.get("image_url")
-                if url:
-                    radiology_image_urls.append(url)
+        # ====================================================
+        # 6) RADIOLOGY BOT (PAUSED)
+        # ====================================================
+        radiology = {}          # empty placeholder so downstream bots don't break
+        radiology_image_urls = []   # no images for now
+        st.info("🛑 Radiology Bot is currently paused – skipping imaging generation.")
+
+        # run_step(
+        #     "Radiology Bot",
+        #     generate_radiology_studies_llm,
+        #     age,
+        #     gender,
+        #     diagnosis,
+        #     timeline,
+        # )
+
+        # # Collect URLs for PDF later (if present)
+        # radiology_image_urls = []
+        # if isinstance(radiology, dict):
+        #     for study in radiology.get("studies", []):
+        #         url = study.get("image_url")
+        #         if url:
+        #             radiology_image_urls.append(url)
 
         # 7) PROCEDURE BOT
         procedures = run_step(

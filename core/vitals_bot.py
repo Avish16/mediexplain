@@ -21,154 +21,153 @@ def _get_openai_client():
 client = _get_openai_client()
 
 
+def _safe_extract_json(text: str) -> dict:
+    if not text:
+        raise ValueError("Vitals Bot: empty model output.")
+
+    # Strip accidental fences
+    text = text.replace("```json", "").replace("```", "").strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Fallback: extract first {...} block
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise ValueError(f"Vitals Bot: no JSON braces found.\nRAW: {text[:1000]}")
+
+    json_text = match.group(0)
+
+    # Fix common escape issue: \" appears literally
+    json_text = json_text.replace('\\"', '"')
+
+    try:
+        return json.loads(json_text)
+    except Exception as e:
+        raise ValueError(
+            f"❌ Vitals Bot JSON Clean Failed: {e}\n"
+            f"------- RAW START -------\n{json_text[:2500]}\n------- RAW END -------"
+        )
+
+
+def render_vitals_section(vitals: dict) -> str:
+    lines = []
+    meta = vitals.get("collection_metadata", {})
+    lines.append("VITALS")
+    lines.append(f"Date: {meta.get('collection_date', 'N/A')}  "
+                 f"Location: {meta.get('location', 'N/A')}")
+    lines.append("")
+
+    for series in vitals.get("vital_series", []):
+        time = series.get("time", "HH:MM")
+        ctx = series.get("context", "")
+        lines.append(f"Time: {time}  Context: {ctx}")
+        for m in series.get("measurements", []):
+            name = m.get("name", "Measurement")
+            val = m.get("value", "")
+            unit = m.get("unit", "")
+            ref = m.get("reference_range", "")
+            flag = m.get("flag", "N")
+            interp = m.get("interpretation", "")
+            lines.append(
+                f"  {name}: {val} {unit} ({flag}) [ref: {ref}] – {interp}"
+            )
+        lines.append("")
+
+    lines.append("VITALS SUMMARY:")
+    lines.append(vitals.get("overall_interpretation", ""))
+    lines.append("")
+    return "\n".join(lines)
+
 # ============================================================
 #  PLAIN TEXT VITALS BOT (NO JSON ANYWHERE)
 # ============================================================
-def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> str:
-    dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
-    icd = diagnosis.get("icd10_code", "")
-    snomed = diagnosis.get("snomed_code", "")
+def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> dict:
+    """
+    Generate a large, structured vitals report as JSON.
+    Multiple timepoints + detailed measurements, but easy to render as key: value.
+    """
 
-    # pick a plausible date
-    timeline_events = timeline.get("timeline_table", [])
-    if timeline_events and "date" in timeline_events[0]:
-        day = timeline_events[0]["date"]
-    else:
-        day = datetime.now().strftime("%Y-%m-%d")
+    dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
 
     prompt = f"""
-You are generating a clean, realistic, synthetic VITAL SIGNS report in plain text.
-
-STRICT OUTPUT RULES:
-- Output ONLY plain text.
-- NO JSON.
-- NO brackets of any kind.
-- NO markdown.
-- NO bullet symbols like dashes or asterisks.
-- ONLY use:
-    VITALS SUMMARY:
-    VITALS TABLE:
-    and numbered items 1., 2., 3., etc.
-- This output will go directly into a PDF generator.
-
-FORMAT YOU MUST FOLLOW EXACTLY:
-
-VITALS SUMMARY:
-<one paragraph summarizing overall stability or abnormalities, referencing trends, risk factors, and relation to diagnosis>
-
-VITALS TABLE:
-1. Heart Rate
-   Value: <number> bpm
-   Reference Range: <range>
-   Flag: <H, L, or blank>
-   Interpretation: <1 to 2 sentences>
-
-2. Blood Pressure
-   Value: <number/number mmHg>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-3. Respiratory Rate
-   Value: <number breaths per minute>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-4. Temperature
-   Value: <number C>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-5. Oxygen Saturation
-   Value: <number percent>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-6. Weight
-   Value: <number kg>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-7. Height
-   Value: <number cm>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-8. Body Mass Index
-   Value: <number>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-9. Pain Score
-   Value: <number out of ten>
-   Reference Range: <range>
-   Flag: <H or L or blank>
-   Interpretation: <1 to 2 sentences>
-
-CONTENT RULES:
-- All values must be clinically realistic.
-- Flags should match the interpretation.
-- Pain Score must be 0 to 10.
-- Oxygen Saturation must be 85 to 100.
-- Temperature must be 35.5 to 40.0.
-- Heart Rate must be 40 to 160.
-- Blood Pressure must be realistic ranges such as 90 slash 60 to 180 slash 120.
-- No bracket symbols allowed.
-- No code formatting allowed.
-- EVERYTHING must be plain text.
+You are generating a detailed VITALS REPORT for a hospitalized adult patient.
 
 PATIENT:
-Age: {age}
-Gender: {gender}
-Diagnosis: {dx}
-ICD: {icd}
-SNOMED: {snomed}
-Date: {day}
+- Age: {age}
+- Gender: {gender}
+- Primary Diagnosis: {dx}
 
-Return ONLY the VITALS SUMMARY and VITALS TABLE sections.
+HARD RULES:
+- Output ONLY valid JSON.
+- JSON must start with '{{' and end with '}}'.
+- NO markdown, NO backticks, NO commentary outside JSON.
+- NO raw newlines inside strings.
+
+SCHEMA (DO NOT CHANGE KEYS):
+
+{{
+  "collection_metadata": {{
+    "collection_date": "YYYY-MM-DD",
+    "device": "Automated vitals monitor",
+    "location": "Inpatient room",
+    "encounter_id": "VIT-XXXXXX"
+  }},
+  "vital_series": [
+    {{
+      "time": "HH:MM",
+      "context": "Resting | Post-ambulation | Post-medication | Nighttime | Early-morning",
+      "measurements": [
+        {{
+          "name": "Heart Rate",
+          "value": 0,
+          "unit": "bpm",
+          "reference_range": "60-100",
+          "flag": "H|L|N",
+          "interpretation": "short phrase"
+        }},
+        {{
+          "name": "Blood Pressure",
+          "value": "120/80",
+          "unit": "mmHg",
+          "reference_range": "90/60-130/85",
+          "flag": "H|L|N",
+          "interpretation": "short phrase"
+        }}
+      ]
+    }}
+  ],
+  "overall_interpretation": "LONG paragraph summarizing hemodynamic stability, trends, and risk."
+}}
+
+POPULATION REQUIREMENTS:
+- vital_series: at least 8 different time points spanning 24 hours.
+- EACH timepoint's "measurements" must include at minimum:
+  - Heart Rate
+  - Blood Pressure
+  - Respiratory Rate
+  - Temperature
+  - SpO2
+  - Pain Score
+- Additionally, scatter in:
+  - Weight (once or twice),
+  - BMI,
+  - MEWS or NEWS-like composite score (as a 'name'),
+  - any other relevant bedside scoring.
+- For all vital values, keep them physiologically realistic for {age}-year-old {gender} with {dx}.
+- Flags: "H" (high), "L" (low), "N" (normal).
+
+RETURN ONLY THE JSON OBJECT. DO NOT wrap in ```json or add explanations.
 """
 
-    last_error = None
+    response = client.responses.create(
+        model="gpt-4.1",
+        input=prompt,
+        max_output_tokens=2500,
+    )
 
-    # ============================================================
-    # RETRY LOOP
-    # ============================================================
-    for attempt in range(3):
-        try:
-            response = client.responses.create(
-                model="gpt-4.1",
-                input=prompt,
-                max_output_tokens=2000
-            )
-
-            text = (response.output_text or "").strip()
-
-            # Remove any forbidden characters
-            banned = ["[", "]", "{", "}", "<", ">", "*", "•"]
-            for b in banned:
-                text = text.replace(b, "")
-
-            # Required headers
-            if "VITALS SUMMARY:" not in text:
-                raise ValueError("Vitals missing summary header")
-
-            if "VITALS TABLE:" not in text:
-                raise ValueError("Vitals missing table header")
-
-            # Ensure numbering exists
-            if "1." not in text:
-                raise ValueError("Vitals missing numbered items")
-
-            return text
-
-        except Exception as e:
-            print(f"[Vitals Bot] Attempt {attempt + 1} failed:", e)
-            last_error = e
-
-    raise ValueError(f"Vitals Bot failed after 3 attempts: {last_error}")
+    raw = (response.output_text or "").replace("```json", "").replace("```", "").strip()
+    return _safe_extract_json(raw)

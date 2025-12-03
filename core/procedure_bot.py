@@ -10,6 +10,9 @@ except ImportError:
     st = None
 
 
+# ----------------------------------------------------
+# OPENAI CLIENT
+# ----------------------------------------------------
 def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key and st is not None:
@@ -22,22 +25,64 @@ def _get_openai_client():
 client = _get_openai_client()
 
 
+# ----------------------------------------------------
+# ROBUST JSON EXTRACTOR (Procedure Bot)
+# ----------------------------------------------------
 def _safe_extract_json(text: str) -> dict:
-    """Extract and sanitize JSON from LLM output for procedures."""
+    """
+    Very defensive JSON extractor for Procedure Bot.
+    - Strips markdown fences
+    - Removes control characters
+    - Finds first { ... } block
+    - Cleans trailing commas
+    - Handles simple bad escape noise
+    """
+
+    if not text:
+        raise ValueError("Procedure Bot: Empty response from model.")
+
+    # Remove markdown fences
     text = text.replace("```json", "").replace("```", "").strip()
+
+    # Remove invisible control characters
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
 
+    # Replace raw newlines with spaces (keep everything single-line JSON-ish)
+    text = text.replace("\n", " ")
+
+    # Remove completely illegal escape sequences like \q, \%, etc.
+    text = re.sub(r'\\(?!["\\/bfnrtu])', "", text)
+
+    # Find first JSON object
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
-        raise ValueError("Procedure Bot: No JSON object found in output.")
+        raise ValueError(
+            f"Procedure Bot: No JSON braces found in model output.\n"
+            f"RAW START:\n{text[:1000]}\n... "
+        )
+
     json_text = match.group(0)
+
+    # Remove trailing commas before } or ]
+    json_text = re.sub(r",\s*(\})", r"\1", json_text)
+    json_text = re.sub(r",\s*(\])", r"\1", json_text)
+
+    # Squash excessive whitespace
+    json_text = re.sub(r"\s+", " ", json_text)
 
     try:
         return json.loads(json_text)
     except Exception as e:
-        raise ValueError(f"Procedure Bot JSON parse error: {e}\nRaw: {json_text[:400]}...")
+        raise ValueError(
+            f"\n❌ Procedure Bot JSON parse failed: {e}\n"
+            f"------- RAW START -------\n{json_text[:2000]}\n"
+            f"------- RAW END -------"
+        )
 
 
+# ----------------------------------------------------
+# MAIN FUNCTION (with 3-attempt safety net)
+# ----------------------------------------------------
 def generate_procedures_llm(
     age: int,
     gender: str,
@@ -70,7 +115,7 @@ def generate_procedures_llm(
     today = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
-You are an attending physician documenting all **invasive and semi-invasive procedures**
+You are an attending physician documenting all invasive and semi-invasive procedures
 performed on a synthetic patient during their disease course.
 
 PATIENT CONTEXT:
@@ -91,11 +136,11 @@ RADIOLOGY (snippet, for indications and guidance):
 {rads_str}
 
 GOAL:
-Create a realistic **procedure history** including:
+Create a realistic procedure history including:
 - Diagnostic procedures (e.g., colonoscopy, bronchoscopy, cardiac cath)
 - Therapeutic procedures (e.g., thoracentesis, central line, chest tube, PCI)
 - Minor bedside procedures (e.g., paracentesis, wound debridement)
-- At least one procedure that had **minor or moderate complications**
+- At least one procedure that had minor or moderate complications
   (e.g., hypotension, small bleed, transient arrhythmia) – not catastrophic.
 
 OUTPUT FORMAT:
@@ -144,11 +189,22 @@ RULES:
 - Output ONLY the JSON object, no commentary.
 """
 
-    response = client.responses.create(
-        model="gpt-4.1",
-        input=prompt,
-        max_output_tokens=3000,
-    )
+    last_error = None
 
-    raw = response.output_text or ""
-    return _safe_extract_json(raw)
+    # 3-attempt safety net
+    for attempt in range(3):
+        try:
+            response = client.responses.create(
+                model="gpt-4.1",
+                input=prompt,
+                max_output_tokens=3000,
+            )
+            raw = (response.output_text or "").strip()
+            return _safe_extract_json(raw)
+
+        except Exception as e:
+            print(f"[Procedure Bot] Attempt {attempt + 1} failed:", e)
+            last_error = e
+
+    # If all 3 attempts fail, surface final error
+    raise ValueError(f"Procedure Bot failed after 3 attempts: {last_error}")
