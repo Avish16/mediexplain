@@ -12,6 +12,8 @@ protobuf>=4.25.3
 pandas==2.2.2
 sentence-transformers==3.0.1
 pypdf
+tqdm
+
 <<<<<<< HEAD
 =======
 >>>>>>> 71ac918 (Commit 2)
