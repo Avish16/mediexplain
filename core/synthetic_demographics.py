@@ -1,91 +1,79 @@
-import json
 import os
+from openai import OpenAI
 
 try:
     import streamlit as st
 except ImportError:
-    st = None  # allows use outside Streamlit if needed
+    st = None
 
-from openai import OpenAI
 
+# ------------------------------------------------------------
+# OPENAI CLIENT
+# ------------------------------------------------------------
 def _get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key and st is not None:
-        # Try loading from Streamlit secrets if env var not set
-        api_key = st.secrets.get("OPENAI_API_KEY", None)
+    api_key = os.getenv("OPENAI_API_KEY") or (st.secrets["OPENAI_API_KEY"] if st else None)
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set in environment or Streamlit secrets.")
+        raise RuntimeError("OPENAI_API_KEY is not set.")
     return OpenAI(api_key=api_key)
+
 
 client = _get_openai_client()
 
-def generate_demographics_llm(age: int, gender: str) -> dict:
+
+# ------------------------------------------------------------
+# DEMOGRAPHICS BOT (PLAIN TEXT MODE)
+# ------------------------------------------------------------
+def generate_demographics_llm(age: int, gender: str) -> str:
     """
-    Generate synthetic but realistic medical demographics using an LLM.
-    Only age and gender come from the user; everything else is LLM-generated.
+    Generates synthetic patient demographics in plain text (NO JSON).
+    Structured with headers for easy downstream use.
     """
 
     prompt = f"""
-    You are generating synthetic but realistic medical demographics for a fictional patient.
+You are generating synthetic medical demographics for a fictional patient.
 
-    CRITICAL RULES:
-    - Output must be ONLY valid JSON.
-    - Do NOT wrap the JSON in code fences.
-    - Do NOT include explanations, comments, or any text outside the JSON object.
-    - The JSON must start with '{{' and end with '}}'.
+STRICT RULES:
+- Output ONLY PLAIN TEXT.
+- NO JSON.
+- NO brackets, braces, or code fence formatting.
+- Use section headers exactly as shown below.
+- Write realistic, US-style demographic details.
 
-    User-provided fields:
-    - Age: {age}
-    - Gender: {gender}
+OUTPUT FORMAT (TEXT):
 
-    You must choose plausible values for all other fields yourself, including:
-    - Ethnicity
-    - Full US-style address (fake house number + street, city, state, ZIP)
-    - Phone number (fake but valid US format)
-    - Email (realistic-looking but fake)
-    - Insurance details
-    - Emergency contact
-    - Social background
+===== PATIENT DEMOGRAPHICS =====
+Name:
+Age:
+Gender:
+Ethnicity:
+MRN:
+Address:
+Phone:
+Email:
 
-    Required JSON structure:
+===== INSURANCE =====
+Provider:
+Insurance ID:
 
-    {{
-      "name": "string",
-      "age": integer,
-      "gender": "string",
-      "ethnicity": "string",
-      "mrn": "string",
-      "address": "string",
-      "phone": "string",
-      "email": "string",
-      "insurance": {{
-        "provider": "string",
-        "insurance_id": "string"
-      }},
-      "emergency_contact": {{
-        "name": "string",
-        "relationship": "string",
-        "phone": "string"
-      }},
-      "social_history": {{
-        "occupation": "string",
-        "living_situation": "string"
-      }}
-    }}
+===== EMERGENCY CONTACT =====
+Name:
+Relationship:
+Phone:
 
-    Make all values realistic but completely synthetic.
-    """
+===== SOCIAL HISTORY =====
+Occupation:
+Living Situation:
+
+Now fill the template with realistic **synthetic** details.
+Age: {age}
+Gender: {gender}
+"""
 
     response = client.responses.create(
         model="gpt-4.1",
         input=prompt,
-        max_output_tokens=600,
+        max_output_tokens=500,
     )
 
-    raw_output = response.output_text.strip()
-
-    # Safety: remove accidental code fences if the model disobeys
-    raw_output = raw_output.replace("```json", "").replace("```", "").strip()
-
-    demographics = json.loads(raw_output)
-    return demographics
+    raw = response.output_text.strip()
+    return raw

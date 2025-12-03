@@ -1,165 +1,139 @@
-import json
 import os
-import re
-from datetime import datetime
 from openai import OpenAI
+import re
 
 try:
     import streamlit as st
-except ImportError:
+except:
     st = None
 
 
+# ============================================================
+# OPENAI CLIENT
+# ============================================================
 def _get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key and st is not None:
-        api_key = st.secrets.get("OPENAI_API_KEY", None)
+    api_key = os.getenv("OPENAI_API_KEY") or (st.secrets["OPENAI_API_KEY"] if st else None)
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY missing in environment or Streamlit secrets.")
+        raise RuntimeError("OPENAI_API_KEY missing.")
     return OpenAI(api_key=api_key)
 
 
 client = _get_openai_client()
 
 
-# ============================================================
-# SUPER-ROBUST JSON EXTRACTOR (same strength as Lab Bot)
-# ============================================================
-
 def _safe_extract_json(text: str) -> dict:
     """
-    Extremely robust JSON extractor for Vitals Bot.
-    Fixes:
-    - control chars
-    - unescaped quotes
-    - newlines inside strings
-    - trailing commas
-    - markdown fences
-    - partial blocks
+    Safest extractor possible:
+    - Detects escaped JSON
+    - Unescapes it
+    - Removes illegal characters
+    - Removes trailing commas
+    - Attempts 2-level JSON decode
     """
 
-    # Remove markdown leftovers
-    text = text.replace("```json", "").replace("```", "")
-    text = text.strip()
+    # ---------- 1) Strip markdown ----------
+    text = text.replace("```json", "").replace("```", "").strip()
 
-    # Remove all control characters
+    # ---------- 2) If output starts with \" instead of " it is ESCAPED JSON ----------
+    if text.startswith("{\\") or text.startswith("\\{") or "\\\"" in text[:50]:
+        # Unescape once
+        text = text.encode("utf-8").decode("unicode_escape")
+
+    # ---------- 3) Kill invisible chars ----------
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
 
-    # Replace raw newlines inside text
+    # ---------- 4) Remove newlines inside strings ----------
     text = text.replace("\n", " ")
 
-    # Find ANY JSON block { ... }
+    # ---------- 5) Extract JSON block ----------
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
-        raise ValueError("Vitals Bot: No JSON block found.")
+        raise ValueError("Vitals Bot: No JSON found at all.")
 
     json_text = match.group(0)
 
-    # Escape unescaped quotes inside strings
-    json_text = re.sub(r'(?<!\\)"(?=[^:{},\]\[])', '\\"', json_text)
+    # ---------- 6) Remove stray backslashes ----------
+    json_text = re.sub(r"\\(?![\"\\/bfnrt])", "", json_text)
 
-    # Remove trailing commas
-    json_text = re.sub(r",\s*(\}|\])", r"\1", json_text)
+    # ---------- 7) Remove trailing commas ----------
+    json_text = re.sub(r",\s*(\]|\})", r"\1", json_text)
 
-    # FINAL ATTEMPT
+    # ---------- 8) Now try parse ----------
     try:
         return json.loads(json_text)
-    except Exception as e:
-        raise ValueError(
-            f"\n❌ Vitals Bot JSON Clean Failed: {e}\n"
-            f"------- RAW START -------\n"
-            f"{json_text[:3500]}\n"
-            f"------- RAW END ---------"
-        )
+    except:
+        # Try second-pass decode (in case it's double-escaped)
+        try:
+            cleaned = json_text.encode("utf-8").decode("unicode_escape")
+            return json.loads(cleaned)
+        except Exception as e2:
+            raise ValueError(
+                f"\n❌ Vitals Bot JSON decode failed: {e2}\n"
+                f"------- RAW JSON START -------\n{json_text[:2500]}\n"
+                f"------- RAW JSON END ---------"
+            )
 
 
 
 # ============================================================
-# MAIN BOT
+# SIMPLE TEXT CLEANER (NOT JSON)
 # ============================================================
-
-def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> dict:
+def _clean_text(text: str) -> str:
     """
-    Generate a full vitals set — 15 vitals, metadata, flags, interpretation.
-    Fully JSON-safe after sanitizer.
+    Cleans output but DOES NOT attempt JSON parsing.
     """
+    if not text:
+        return ""
 
+    # Remove markdown fences
+    text = text.replace("```", "").replace("```text", "").replace("```plaintext", "")
+
+    # Remove invisible chars
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+
+    # Normalize spacing
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
+
+# ============================================================
+# MAIN VITALS BOT — PLAIN TEXT VERSION (UNBREAKABLE)
+# ============================================================
+def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> str:
     dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
-    icd = diagnosis.get("icd10_code", "")
-
-    # timeline alignment
-    events = timeline.get("timeline_table", [])
-    if events:
-        first_date = events[0]["date"]
-    else:
-        first_date = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
-    You are generating a highly realistic Vitals Report.
+You are generating a FULL hospital-grade VITALS REPORT in **plain text only**.
 
-    Patient:
-    - Age: {age}
-    - Gender: {gender}
-    - Primary Diagnosis: {dx} ({icd})
+RULES:
+- NO JSON
+- NO braces
+- NO code blocks
+- NO markdown
+- Write like a real EPIC/Cerner hospital vitals section
+- Produce 2–3 pages of detailed vitals
+- Include: HR, BP, MAP, RR, Temp, SpO2, ETCO2, Height, Weight, BMI, Pain Score, I/O Summary
+- Add trend commentary, clinical interpretation, and risk context
+- Use headers exactly like this:
 
-    RULES:
-    - Output ONLY valid JSON.
-    - DO NOT use newlines inside strings.
-    - JSON must begin with '{{' and end with '}}'.
+VITALS REPORT — COLLECTION METADATA
+VITALS – COMPLETE SET
+ADDITIONAL OBSERVATIONS
+CLINICAL INTERPRETATION SUMMARY
 
-    REQUIRED 15 VITALS:
-      1. Heart Rate
-      2. Blood Pressure
-      3. Respiratory Rate
-      4. Temperature
-      5. SpO₂
-      6. Height
-      7. Weight
-      8. BMI
-      9. Pain Score
-      10. Blood Glucose
-      11. PEF
-      12. FiO₂
-      13. MAP
-      14. Waist Circumference
-      15. Level of Consciousness (AVPU/GCS)
+PATIENT:
+Age: {age}
+Gender: {gender}
+Primary Diagnosis: {dx}
 
-    JSON FORMAT:
-
-    {{
-      "collection_metadata": {{
-         "collection_date": "{first_date}",
-         "collection_time": "08:32",
-         "device": "Automated vitals monitor",
-         "location": "Inpatient room"
-      }},
-      "vitals": [
-         {{
-            "name": "string",
-            "value": "number/string",
-            "unit": "string",
-            "reference_range": "string",
-            "thresholds": {{
-                "low_critical": "value or null",
-                "low": "value or null",
-                "high": "value or null",
-                "high_critical": "value or null"
-            }},
-            "flag": "H | L | C | ''",
-            "interpretation": "short clinician-style interpretation (no newlines)"
-         }}
-      ],
-      "clinical_summary": "LONG multi-paragraph summary using \\n for line breaks."
-    }}
-
-    Produce ONLY JSON. No extra commentary.
-    """
+Return ONLY plain text.
+"""
 
     response = client.responses.create(
         model="gpt-4.1",
         input=prompt,
-        max_output_tokens=2500,
+        max_output_tokens=5000
     )
 
-    raw = response.output_text or ""
-    return _safe_extract_json(raw)
+    return (response.output_text or "").strip()

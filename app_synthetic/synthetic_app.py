@@ -4,12 +4,11 @@
 # ============================================================
 
 import os
+import sys
 import traceback
 import streamlit as st
-import re
 
-
-import sys, os
+# Make project root importable (for core.* modules)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ---------- Core bot imports (your modules) ----------
@@ -75,89 +74,202 @@ logo_path = st.sidebar.text_input(
     value="assets/hospital_logo.png"
 )
 
+# ------------------------------------------------------------
+# Debug mode: run bots individually
+# ------------------------------------------------------------
+st.sidebar.subheader("⚙️ Debug Mode")
+
+debug_mode = st.sidebar.checkbox("Run single bot (debug mode)")
+
+if debug_mode:
+    bot_to_run = st.sidebar.selectbox(
+        "Choose bot to run:",
+        [
+            "Demographics",
+            "Diagnosis",
+            "Timeline",
+            "Lab",
+            "Vitals",
+            "Radiology",
+            "Procedures",
+            "Pathology",
+            "Medications",
+            "Nursing Notes",
+            "Clinical Notes",
+            "Prescriptions",
+            "Billing",
+        ],
+    )
+
+    if st.sidebar.button("🚀 Run Selected Bot"):
+        st.write(f"### Debug Run: {bot_to_run}")
+
+        # --- Create dummy inputs for dependent bots ---
+        dummy_demo = {"age": age, "gender": gender}
+        dummy_dx = {"primary_diagnosis": "Test Condition", "icd10_code": "T00.00"}
+        dummy_timeline = {"timeline_table": []}
+        dummy_labs = {}
+        dummy_vitals = {}
+
+        try:
+            # NOTE: use st.write for *everything* so it works for dicts AND plain text
+            if bot_to_run == "Demographics":
+                st.write(generate_demographics_llm(age, gender))
+
+            elif bot_to_run == "Diagnosis":
+                st.write(generate_diagnosis_llm(age, gender))
+
+            elif bot_to_run == "Timeline":
+                st.write(generate_timeline_llm(age, gender, dummy_dx))
+
+            elif bot_to_run == "Lab":
+                st.write(generate_lab_report_llm(age, gender, dummy_dx, dummy_timeline))
+
+            elif bot_to_run == "Vitals":
+                st.write(generate_vitals_llm(age, gender, dummy_dx, dummy_timeline))
+
+            elif bot_to_run == "Radiology":
+                st.write(generate_radiology_studies_llm(age, gender, dummy_dx, dummy_timeline))
+
+            elif bot_to_run == "Procedures":
+                st.write(
+                    generate_procedures_llm(
+                        age, gender, dummy_dx, dummy_timeline, dummy_labs, {}
+                    )
+                )
+
+            elif bot_to_run == "Pathology":
+                st.write(
+                    generate_pathology_report_llm(
+                        age, gender, dummy_dx, {}, {}, {}
+                    )
+                )
+
+            elif bot_to_run == "Medications":
+                st.write(
+                    generate_medication_plan_llm(
+                        age, gender, dummy_dx, dummy_timeline, dummy_labs, dummy_vitals
+                    )
+                )
+
+            elif bot_to_run == "Nursing Notes":
+                st.write(
+                    generate_nursing_notes_llm(
+                        age,
+                        gender,
+                        dummy_demo,
+                        dummy_dx,
+                        dummy_vitals,
+                        dummy_labs,
+                        dummy_timeline,
+                    )
+                )
+
+            elif bot_to_run == "Clinical Notes":
+                st.write(
+                    generate_clinical_notes_llm(
+                        age,
+                        gender,
+                        dummy_demo,
+                        dummy_dx,
+                        dummy_timeline,
+                        dummy_labs,
+                        dummy_vitals,
+                        {},
+                    )
+                )
+
+            elif bot_to_run == "Prescriptions":
+                st.write(
+                    generate_prescriptions_llm(
+                        age, gender, dummy_dx, {}, dummy_vitals, dummy_labs
+                    )
+                )
+
+            elif bot_to_run == "Billing":
+                st.write(
+                    generate_billing_summary_llm(
+                        age, gender, dummy_demo, dummy_dx, {}, {}, {}, {}
+                    )
+                )
+
+        except Exception as e:
+            st.error("❌ Bot failed")
+            st.code(str(e))
+
 output_pdf_path = "synthetic_patient_report.pdf"
 
 st.markdown("---")
 
+# ============================================================
+# FULL PIPELINE
+# ============================================================
 if st.button("🚀 Generate FULL Synthetic Case"):
     try:
-        # ====================================================
         # 1) DEMOGRAPHICS BOT
-        # ====================================================
         demographics = run_step(
             "Demographics Bot",
             generate_demographics_llm,
             age,
-            gender
+            gender,
         )
 
-        # ====================================================
         # 2) DIAGNOSIS BOT
-        # ====================================================
         diagnosis = run_step(
             "Diagnosis Bot",
             generate_diagnosis_llm,
             age,
-            gender
+            gender,
         )
 
-        # ====================================================
         # 3) TIMELINE BOT
-        # ====================================================
         timeline = run_step(
             "Timeline Bot",
             generate_timeline_llm,
             age,
             gender,
-            diagnosis
+            diagnosis,
         )
 
-        # ====================================================
         # 4) LAB BOT
-        # ====================================================
         labs = run_step(
             "Lab Bot",
             generate_lab_report_llm,
             age,
             gender,
             diagnosis,
-            timeline
+            timeline,
         )
 
-        # ====================================================
         # 5) VITALS BOT
-        # ====================================================
         vitals = run_step(
             "Vitals Bot",
             generate_vitals_llm,
             age,
             gender,
             diagnosis,
-            timeline
+            timeline,
         )
 
-        # ====================================================
         # 6) RADIOLOGY BOT (includes image generation)
-        # ====================================================
         radiology = run_step(
             "Radiology Bot",
             generate_radiology_studies_llm,
             age,
             gender,
             diagnosis,
-            timeline
+            timeline,
         )
 
         # Collect URLs for PDF later (if present)
         radiology_image_urls = []
-        for study in radiology.get("studies", []):
-            url = study.get("image_url")
-            if url:
-                radiology_image_urls.append(url)
+        if isinstance(radiology, dict):
+            for study in radiology.get("studies", []):
+                url = study.get("image_url")
+                if url:
+                    radiology_image_urls.append(url)
 
-        # ====================================================
         # 7) PROCEDURE BOT
-        # ====================================================
         procedures = run_step(
             "Procedure Bot",
             generate_procedures_llm,
@@ -166,12 +278,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             diagnosis,
             timeline,
             labs,
-            radiology
+            radiology,
         )
 
-        # ====================================================
         # 8) PATHOLOGY BOT
-        # ====================================================
         pathology = run_step(
             "Pathology Bot",
             generate_pathology_report_llm,
@@ -180,12 +290,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             diagnosis,
             procedures,
             radiology,
-            labs
+            labs,
         )
 
-        # ====================================================
         # 9) MEDICATION BOT
-        # ====================================================
         medications = run_step(
             "Medication Bot",
             generate_medication_plan_llm,
@@ -194,12 +302,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             diagnosis,
             timeline,
             labs,
-            vitals
+            vitals,
         )
 
-        # ====================================================
         # 10) NURSING NOTES BOT
-        # ====================================================
         nursing_notes = run_step(
             "Nursing Notes Bot",
             generate_nursing_notes_llm,
@@ -209,12 +315,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             diagnosis,
             vitals,
             labs,
-            timeline
+            timeline,
         )
 
-        # ====================================================
         # 11) CLINICAL NOTES BOT
-        # ====================================================
         clinical_notes = run_step(
             "Clinical Notes Bot",
             generate_clinical_notes_llm,
@@ -225,12 +329,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             timeline,
             labs,
             vitals,
-            radiology
+            radiology,
         )
 
-        # ====================================================
         # 12) PRESCRIPTION BOT
-        # ====================================================
         prescriptions = run_step(
             "Prescription Bot",
             generate_prescriptions_llm,
@@ -239,12 +341,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             diagnosis,
             medications,
             vitals,
-            labs
+            labs,
         )
 
-        # ====================================================
         # 13) BILLING BOT
-        # ====================================================
         billing = run_step(
             "Billing Bot",
             generate_billing_summary_llm,
@@ -255,12 +355,10 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             procedures,
             labs,
             radiology,
-            medications
+            medications,
         )
 
-        # ====================================================
         # 14) CONSOLIDATOR BOT
-        # ====================================================
         patient_record = run_step(
             "Consolidator Bot",
             consolidate_patient_record,
@@ -276,71 +374,58 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             nursing_notes,
             medications,
             prescriptions,
-            billing
+            billing,
         )
 
-        # ====================================================
         # 15) SAFETY LABELER BOT
-        # ====================================================
         safety_labels = run_step(
             "Safety Labeler Bot",
             label_safety_llm,
-            patient_record
+            patient_record,
         )
 
-        # ====================================================
         # 16) CONSISTENCY CHECKER BOT
-        # ====================================================
         consistency = run_step(
             "Consistency Checker Bot",
             check_consistency_llm,
-            patient_record
+            patient_record,
         )
 
-        # ====================================================
         # 17) RENDERER BOT (TEXT)
-        # ====================================================
         rendered_text = run_step(
             "Renderer Bot",
             render_patient_record,
             patient_record,
             safety_labels,
-            consistency
+            consistency,
         )
 
-        # ====================================================
         # 18) COMPOSER BOT (WRAP HEADER/FOOTER)
-        # ====================================================
         final_text = run_step(
             "Composer Bot",
             compose_final_document,
-            rendered_text
+            rendered_text,
         )
 
-        # ====================================================
         # 19) PDF GENERATOR
-        # ====================================================
         st.info("📄 Generating PDF...")
-        # If logo_path doesn't exist, pass None
         logo_arg = logo_path if logo_path and os.path.exists(logo_path) else None
 
         generate_pdf(
             report_text=final_text,
             radiology_images=radiology_image_urls,
             output_file=output_pdf_path,
-            logo_path=logo_arg
+            logo_path=logo_arg,
         )
         st.success("✅ PDF generated")
 
-        # ====================================================
         # DOWNLOAD LINK
-        # ====================================================
         with open(output_pdf_path, "rb") as f:
             st.download_button(
                 label="⬇️ Download Synthetic Medical Record PDF",
                 data=f,
                 file_name="synthetic_patient_record.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
             )
 
         st.success("🎉 Full pipeline completed successfully.")

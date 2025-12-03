@@ -1,5 +1,6 @@
 import random
 import uuid
+import re
 
 def generate_demographics():
     names = ["John Carter", "Sarah Greene", "Michael Patel", "Emily Johnson"]
