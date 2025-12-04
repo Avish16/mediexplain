@@ -1,13 +1,17 @@
 # app/rag/ingest.py
 
 import os
+import sys
 import glob
 import logging
+
+# --- Fix for ChromaDB sqlite3 issue (must be BEFORE chromadb import) ---
+__import__("pysqlite3")
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+
 from bs4 import BeautifulSoup
-from tqdm import tqdm
 import chromadb
-from chromadb.config import Settings
-from openai import OpenAI
+from chromadb.utils import embedding_functions
 
 from app.rag.config import (
     HTML_DIR,
@@ -18,34 +22,20 @@ from app.rag.config import (
     EMBED_MODEL,
 )
 
-client = OpenAI()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-def get_chroma_client():
-    """
-    Use DuckDB + Parquet backend for full compatibility with Codespaces.
-    """
-    os.makedirs(CHROMA_DB_DIR, exist_ok=True)
 
-    return chromadb.Client(
-        Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=CHROMA_DB_DIR,
-        )
-    )
-
-def extract_text_from_html(path: str) -> str:
-    """
-    Clean HTML → plain text.
-    """
+def _extract_text_from_html(path: str) -> str:
+    """Load an HTML file and convert it to cleaned plain text."""
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
 
     soup = BeautifulSoup(html, "html.parser")
+
+    # Remove <script>, <style>, <noscript> etc.
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
@@ -53,7 +43,9 @@ def extract_text_from_html(path: str) -> str:
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     return "\n".join(lines)
 
-def chunk_text(text: str):
+
+def _chunk_text(text: str):
+    """Split long text into overlapping character chunks."""
     chunks = []
     start = 0
     length = len(text)
@@ -68,68 +60,116 @@ def chunk_text(text: str):
 
     return chunks
 
-def embed_batch(texts):
-    response = client.embeddings.create(
-        model=EMBED_MODEL,
-        input=texts,
+
+def _get_collection(api_key: str):
+    """
+    Create or load the Chroma collection with an OpenAI embedding function.
+    Chroma will compute & store embeddings automatically on .add().
+    """
+    os.makedirs(CHROMA_DB_DIR, exist_ok=True)
+
+    client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+
+    embedding_fn = embedding_functions.OpenAIEmbeddingFunction(
+        api_key=api_key,
+        model_name=EMBED_MODEL,
     )
-    return [d.embedding for d in response.data]
 
-def build_index():
+    collection = client.get_or_create_collection(
+        name=COLLECTION_NAME,
+        embedding_function=embedding_fn,
+    )
+    return collection
+
+
+def build_index(api_key: str | None = None, force_rebuild: bool = False):
     """
-    Build the RAG vector database.
+    Build the Chroma index from HTML files under HTML_DIR.
+
+    - Reads *.html from html/ folder
+    - Extracts text with BeautifulSoup
+    - Chunks text
+    - Inserts chunks into Chroma (which embeds them)
+
+    If the collection already contains data and force_rebuild=False,
+    ingestion is skipped.
     """
-    chroma_client = get_chroma_client()
+    if api_key is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
 
-    try:
-        collection = chroma_client.get_collection(COLLECTION_NAME)
-        logging.info(f"Using existing collection: {COLLECTION_NAME}")
-    except Exception:
-        collection = chroma_client.create_collection(COLLECTION_NAME)
-        logging.info(f"Created new collection: {COLLECTION_NAME}")
-
-    paths = glob.glob(os.path.join(HTML_DIR, "*.html"))
-    logging.info(f"Found {len(paths)} HTML files.")
-
-    if not paths:
-        logging.warning("⚠️  No HTML files found. Please download first.")
-        return
-
-    ids, texts, metas = [], [], []
-
-    for path in tqdm(paths, desc="Processing HTML"):
-        pmcid = os.path.basename(path).replace(".html", "")
-        text = extract_text_from_html(path)
-        if not text.strip():
-            continue
-
-        chunks = chunk_text(text)
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"{pmcid}_chunk_{i}"
-            ids.append(chunk_id)
-            texts.append(chunk)
-            metas.append({"pmcid": pmcid, "chunk_index": i})
-
-    logging.info(f"Total chunks to embed: {len(texts)}")
-
-    batch_size = 64
-    for start in tqdm(range(0, len(texts), batch_size), desc="Embedding"):
-        end = start + batch_size
-        b_txt = texts[start:end]
-        b_ids = ids[start:end]
-        b_meta = metas[start:end]
-
-        embeddings = embed_batch(b_txt)
-
-        collection.add(
-            ids=b_ids,
-            embeddings=embeddings,
-            documents=b_txt,
-            metadatas=b_meta,
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY not set and no api_key passed to build_index()."
         )
 
-    logging.info("✅ Successfully built RAG index.")
+    collection = _get_collection(api_key)
+
+    existing_count = collection.count()
+    if existing_count > 0 and not force_rebuild:
+        logging.info(
+            f"Collection '{COLLECTION_NAME}' already has {existing_count} chunks; "
+            f"skipping ingestion (set force_rebuild=True to rebuild)."
+        )
+        return
+
+    if existing_count > 0 and force_rebuild:
+        logging.info(
+            f"force_rebuild=True: deleting existing collection data "
+            f"({existing_count} chunks)."
+        )
+        # easiest way: delete and recreate collection
+        client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+        client.delete_collection(COLLECTION_NAME)
+        collection = _get_collection(api_key)
+
+    pattern = os.path.join(HTML_DIR, "*.html")
+    paths = glob.glob(pattern)
+    logging.info(f"Found {len(paths)} HTML files in {HTML_DIR}")
+
+    if not paths:
+        logging.warning("No HTML files found. Did you download them?")
+        return
+
+    for path in paths:
+        filename = os.path.basename(path)       # e.g. PMC123456.html
+        pmcid = filename.replace(".html", "")
+
+        logging.info(f"Processing {filename} ...")
+
+        try:
+            text = _extract_text_from_html(path)
+            if not text.strip():
+                logging.warning(f"No text extracted from {filename}, skipping.")
+                continue
+
+            chunks = _chunk_text(text)
+            if not chunks:
+                logging.warning(f"No chunks created for {filename}, skipping.")
+                continue
+
+            ids = [f"{pmcid}_chunk_{i}" for i in range(len(chunks))]
+            metadatas = [
+                {"source": pmcid, "chunk_index": i} for i in range(len(chunks))
+            ]
+
+            collection.add(
+                documents=chunks,
+                metadatas=metadatas,
+                ids=ids,
+            )
+
+            logging.info(f"Inserted {len(chunks)} chunks for {pmcid}")
+
+        except Exception as e:
+            logging.error(f"Error processing {filename}: {e}")
+
+    final_count = collection.count()
+    logging.info(
+        f"✅ Finished building Chroma index from HTML. "
+        f"Collection now has {final_count} chunks."
+    )
 
 
 if __name__ == "__main__":
+    # Allows: python -m app.rag.ingest  (requires OPENAI_API_KEY env)
     build_index()

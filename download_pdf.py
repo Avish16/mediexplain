@@ -1,181 +1,442 @@
+# import os
+# import time
+# import re
+# import logging
+
+# import requests
+# from pypdf import PdfReader
+
+# # =====================================================
+# # CONFIG – PMC OPEN-ACCESS MEDICAL ARTICLE LINKS
+# # =====================================================
+# ARTICLE_URLS = [
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270588/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12443935/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12312990/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11931068/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11823376/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12259682/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12469573/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11632627/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12570521/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12181874/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822619/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12000858/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12086803/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12117996/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12396805/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12389004/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270453/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11949333/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833648/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11810274/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11987642/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11876511/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12160329/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12398448/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12141479/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12023478/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12598900/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12642075/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12455369/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12542826/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11800900/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11790333/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009735/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100291/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12283490/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11856534/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12273842/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12105097/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11842776/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12240435/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11983759/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11788900/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12345678/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077166/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966012/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822917/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270722/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12532791/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12163314/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11820484/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11900422/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966788/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11884777/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817702/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12058444/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12421499/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12177628/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12499012/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12378101/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12128891/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11865440/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11922811/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12119944/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12266112/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12034988/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12500318/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12289991/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11999020/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009008/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11777818/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12399375/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11855433/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12131122/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077452/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12244489/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12301099/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11844010/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817745/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12451128/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12199801/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11920456/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12070271/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899880/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822741/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12350442/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11974800/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899802/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100137/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11811908/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12511225/",
+
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12520114/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12600789/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12447733/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12489110/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12140255/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899881/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833717/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC12211952/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11809920/",
+#     "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888219/",
+# ]
+
+# PDF_DIR = "pdfs"
+# HTML_DIR = "html"
+# REQUEST_DELAY = 2.0
+
+# HEADERS = {
+#     "User-Agent": "Mozilla/5.0 (compatible; MediExplainPDFBot/1.0; +https://example.com)"
+# }
+
+# # =====================================================
+# # HELPERS
+# # =====================================================
+
+# def extract_pmcid(article_url: str):
+#     clean = article_url.split("?")[0].rstrip("/")
+#     m = re.search(r"/articles/(PMC[0-9]+)/?$", clean)
+#     if not m:
+#         logging.error(f"Could not extract PMCID from {article_url}")
+#         return None
+#     return m.group(1)
+
+
+# def is_valid_pdf(path: str) -> bool:
+#     """Use pypdf to verify the file is a real, readable PDF."""
+#     try:
+#         reader = PdfReader(path)
+#         _ = len(reader.pages)  # force lazy load
+#         return True
+#     except Exception as e:
+#         logging.error(f"File is not a valid PDF ({path}): {e}")
+#         return False
+
+
+# def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
+#     """
+#     Try to download the PDF.
+#     Returns True if a valid PDF was saved, False otherwise.
+#     """
+#     pdf_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
+#     out_path = os.path.join(PDF_DIR, f"{pmcid}.pdf")
+
+#     # Skip if already downloaded and valid
+#     if os.path.exists(out_path) and is_valid_pdf(out_path):
+#         logging.info(f"PDF already exists and is valid: {out_path}")
+#         return True
+
+#     try:
+#         logging.info(f"Trying PDF: {pdf_url}")
+#         with requests.get(pdf_url, headers=HEADERS, timeout=30, stream=True) as r:
+#             if r.status_code != 200:
+#                 logging.warning(f"PDF not available (HTTP {r.status_code}) for {pdf_url}")
+#                 return False
+
+#             ctype = r.headers.get("Content-Type", "").lower()
+#             if "pdf" not in ctype and "application/octet-stream" not in ctype:
+#                 logging.warning(f"PDF URL returned non-PDF content-type ({ctype}) for {pdf_url}")
+#                 return False
+
+#             with open(out_path, "wb") as f:
+#                 for chunk in r.iter_content(8192):
+#                     if chunk:
+#                         f.write(chunk)
+
+#         if not is_valid_pdf(out_path):
+#             try:
+#                 os.remove(out_path)
+#             except OSError:
+#                 pass
+#             return False
+
+#         logging.info(f"Saved valid PDF: {out_path}")
+#         return True
+
+#     except Exception as e:
+#         logging.error(f"Error downloading PDF for {article_url}: {e}")
+#         if os.path.exists(out_path):
+#             try:
+#                 os.remove(out_path)
+#             except OSError:
+#                 pass
+#         return False
+
+
+# def download_html(article_url: str, pmcid: str) -> bool:
+#     """
+#     Download the HTML article page so it can be opened locally in a browser.
+#     """
+#     out_path = os.path.join(HTML_DIR, f"{pmcid}.html")
+
+#     if os.path.exists(out_path):
+#         logging.info(f"HTML already exists, skipping: {out_path}")
+#         return True
+
+#     try:
+#         logging.info(f"Downloading HTML: {article_url}")
+#         r = requests.get(article_url, headers=HEADERS, timeout=30)
+#         if r.status_code != 200:
+#             logging.error(f"Failed to download HTML for {article_url}: HTTP {r.status_code}")
+#             return False
+
+#         # Save as text so you can open it easily in a browser
+#         with open(out_path, "w", encoding=r.encoding or "utf-8") as f:
+#             f.write(r.text)
+
+#         logging.info(f"Saved HTML: {out_path}")
+#         return True
+
+#     except Exception as e:
+#         logging.error(f"Error downloading HTML for {article_url}: {e}")
+#         return False
+
+
+# # =====================================================
+# # MAIN SCRIPT
+# # =====================================================
+
+# def main():
+#     os.makedirs(PDF_DIR, exist_ok=True)
+#     os.makedirs(HTML_DIR, exist_ok=True)
+
+#     logging.basicConfig(
+#         level=logging.INFO,
+#         format="%(asctime)s [%(levelname)s] %(message)s"
+#     )
+
+#     pdf_success = 0
+#     html_success = 0
+
+#     for idx, article_url in enumerate(ARTICLE_URLS, start=1):
+#         logging.info(f"[{idx}/{len(ARTICLE_URLS)}] {article_url}")
+
+#         pmcid = extract_pmcid(article_url)
+#         if not pmcid:
+#             continue
+
+#         # Always download HTML so you have a viewable file
+#         if download_html(article_url, pmcid):
+#             html_success += 1
+
+#         # Try to download PDF as well (if available)
+#         if download_pdf_if_available(article_url, pmcid):
+#             pdf_success += 1
+
+#         time.sleep(REQUEST_DELAY)
+
+#     logging.info(f"Done. HTML files: {html_success}, PDFs: {pdf_success}")
+
+
+# if __name__ == "__main__":
+#     main()
+
+
 import os
-import time
 import re
+import time
 import logging
 
 import requests
 from pypdf import PdfReader
 
-# =====================================================
-# CONFIG – PMC OPEN-ACCESS MEDICAL ARTICLE LINKS
-# =====================================================
-ARTICLE_URLS = [
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270588/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12443935/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12312990/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11931068/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11823376/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12259682/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12469573/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11632627/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12570521/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12181874/",
+# ============================================
+# CONFIG – DIRECT PDF URLS (100 PMC PDFs)
+# ============================================
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822619/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12000858/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12086803/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12117996/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12396805/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12389004/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270453/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11949333/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833648/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11810274/",
+PDF_URLS = [
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270588/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12443935/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12312990/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11931068/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11823376/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12259682/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12469573/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11632627/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12570521/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12181874/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11987642/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11876511/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12160329/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12398448/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12141479/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12023478/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12598900/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12642075/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12455369/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12542826/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822619/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12000858/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12086803/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12117996/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12396805/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12389004/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270453/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11949333/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833648/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11810274/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11800900/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11790333/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009735/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100291/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12283490/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11856534/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12273842/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12105097/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11842776/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12240435/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11987642/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11876511/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12160329/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12398448/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12141479/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12023478/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12598900/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12642075/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12455369/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12542826/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11983759/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11788900/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12345678/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077166/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966012/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822917/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270722/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12532791/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12163314/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11820484/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11800900/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11790333/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009735/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100291/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12283490/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11856534/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12273842/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12105097/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11842776/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12240435/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11900422/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966788/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11884777/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817702/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12058444/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12421499/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12177628/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12499012/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12378101/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12128891/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11983759/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11788900/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12345678/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077166/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966012/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822917/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12270722/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12532791/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12163314/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11820484/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11865440/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11922811/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12119944/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12266112/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12034988/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12500318/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12289991/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11999020/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009008/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11777818/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11900422/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11966788/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11884777/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817702/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12058444/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12421499/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12177628/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12499012/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12378101/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12128891/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12399375/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11855433/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12131122/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077452/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12244489/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12301099/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11844010/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817745/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12451128/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12199801/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11865440/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11922811/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12119944/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12266112/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12034988/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12500318/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12289991/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11999020/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12009008/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11777818/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11920456/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12070271/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899880/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822741/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12350442/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11974800/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899802/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100137/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11811908/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12511225/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12399375/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11855433/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12131122/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12077452/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12244489/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12301099/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11844010/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11817745/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12451128/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12199801/pdf/",
 
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12520114/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12600789/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12447733/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12489110/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12140255/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899881/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833717/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12211952/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11809920/",
-    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888219/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11920456/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12070271/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899880/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11822741/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12350442/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11974800/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899802/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12100137/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11811908/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12511225/pdf/",
+
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12520114/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12600789/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12447733/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12489110/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12140255/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11899881/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11833717/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12211952/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11809920/pdf/",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC11888219/pdf/",
 ]
 
-PDF_DIR = "pdfs"
-HTML_DIR = "html"
+OUTPUT_DIR = "pdfs"
 REQUEST_DELAY = 2.0
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; MediExplainPDFBot/1.0; +https://example.com)"
 }
 
-# =====================================================
+# ============================================
 # HELPERS
-# =====================================================
+# ============================================
 
-def extract_pmcid(article_url: str):
-    clean = article_url.split("?")[0].rstrip("/")
-    m = re.search(r"/articles/(PMC[0-9]+)/?$", clean)
-    if not m:
-        logging.error(f"Could not extract PMCID from {article_url}")
-        return None
-    return m.group(1)
+def filename_from_url(url: str, index: int) -> str:
+    """Try to extract PMCID from URL, else fall back to index."""
+    m = re.search(r"/articles/(PMC[0-9]+)/pdf", url)
+    if m:
+        return f"{m.group(1)}.pdf"
+    return f"paper_{index:03d}.pdf"
 
 
 def is_valid_pdf(path: str) -> bool:
-    """Use pypdf to verify the file is a real, readable PDF."""
+    """Validate that the file is a readable PDF using pypdf."""
     try:
         reader = PdfReader(path)
         _ = len(reader.pages)  # force lazy load
         return True
     except Exception as e:
-        logging.error(f"File is not a valid PDF ({path}): {e}")
+        logging.error(f"Invalid PDF '{path}': {e}")
         return False
 
 
-def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
-    """
-    Try to download the PDF.
-    Returns True if a valid PDF was saved, False otherwise.
-    """
-    pdf_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
-    out_path = os.path.join(PDF_DIR, f"{pmcid}.pdf")
-
-    # Skip if already downloaded and valid
-    if os.path.exists(out_path) and is_valid_pdf(out_path):
-        logging.info(f"PDF already exists and is valid: {out_path}")
-        return True
-
+def download_pdf(pdf_url: str, out_path: str) -> bool:
+    """Download PDF from URL, check content-type and validate with pypdf."""
     try:
-        logging.info(f"Trying PDF: {pdf_url}")
         with requests.get(pdf_url, headers=HEADERS, timeout=30, stream=True) as r:
             if r.status_code != 200:
-                logging.warning(f"PDF not available (HTTP {r.status_code}) for {pdf_url}")
+                logging.error(f"HTTP {r.status_code} for {pdf_url}")
                 return False
 
             ctype = r.headers.get("Content-Type", "").lower()
-            if "pdf" not in ctype and "application/octet-stream" not in ctype:
-                logging.warning(f"PDF URL returned non-PDF content-type ({ctype}) for {pdf_url}")
+            if "pdf" not in ctype:
+                logging.error(f"Not a PDF at {pdf_url} (Content-Type={ctype})")
                 return False
 
             with open(out_path, "wb") as f:
@@ -183,6 +444,7 @@ def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
                     if chunk:
                         f.write(chunk)
 
+        # Validate
         if not is_valid_pdf(out_path):
             try:
                 os.remove(out_path)
@@ -194,7 +456,7 @@ def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
         return True
 
     except Exception as e:
-        logging.error(f"Error downloading PDF for {article_url}: {e}")
+        logging.error(f"Error downloading {pdf_url}: {e}")
         if os.path.exists(out_path):
             try:
                 os.remove(out_path)
@@ -203,69 +465,34 @@ def download_pdf_if_available(article_url: str, pmcid: str) -> bool:
         return False
 
 
-def download_html(article_url: str, pmcid: str) -> bool:
-    """
-    Download the HTML article page so it can be opened locally in a browser.
-    """
-    out_path = os.path.join(HTML_DIR, f"{pmcid}.html")
-
-    if os.path.exists(out_path):
-        logging.info(f"HTML already exists, skipping: {out_path}")
-        return True
-
-    try:
-        logging.info(f"Downloading HTML: {article_url}")
-        r = requests.get(article_url, headers=HEADERS, timeout=30)
-        if r.status_code != 200:
-            logging.error(f"Failed to download HTML for {article_url}: HTTP {r.status_code}")
-            return False
-
-        # Save as text so you can open it easily in a browser
-        with open(out_path, "w", encoding=r.encoding or "utf-8") as f:
-            f.write(r.text)
-
-        logging.info(f"Saved HTML: {out_path}")
-        return True
-
-    except Exception as e:
-        logging.error(f"Error downloading HTML for {article_url}: {e}")
-        return False
-
-
-# =====================================================
-# MAIN SCRIPT
-# =====================================================
+# ============================================
+# MAIN
+# ============================================
 
 def main():
-    os.makedirs(PDF_DIR, exist_ok=True)
-    os.makedirs(HTML_DIR, exist_ok=True)
-
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s"
     )
 
-    pdf_success = 0
-    html_success = 0
+    success = 0
+    fail = 0
 
-    for idx, article_url in enumerate(ARTICLE_URLS, start=1):
-        logging.info(f"[{idx}/{len(ARTICLE_URLS)}] {article_url}")
+    for idx, url in enumerate(PDF_URLS, start=1):
+        logging.info(f"[{idx}/{len(PDF_URLS)}] {url}")
+        filename = filename_from_url(url, idx)
+        out_path = os.path.join(OUTPUT_DIR, filename)
 
-        pmcid = extract_pmcid(article_url)
-        if not pmcid:
-            continue
-
-        # Always download HTML so you have a viewable file
-        if download_html(article_url, pmcid):
-            html_success += 1
-
-        # Try to download PDF as well (if available)
-        if download_pdf_if_available(article_url, pmcid):
-            pdf_success += 1
+        ok = download_pdf(url, out_path)
+        if ok:
+            success += 1
+        else:
+            fail += 1
 
         time.sleep(REQUEST_DELAY)
 
-    logging.info(f"Done. HTML files: {html_success}, PDFs: {pdf_success}")
+    logging.info(f"Done. Valid PDFs: {success}, failed: {fail}")
 
 
 if __name__ == "__main__":
