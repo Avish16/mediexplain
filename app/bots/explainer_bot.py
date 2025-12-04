@@ -10,6 +10,7 @@ except ImportError:
 _client = None
 
 
+
 def _get_openai_client() -> OpenAI:
     """Return a singleton OpenAI client using env or Streamlit secrets."""
     global _client
@@ -114,3 +115,15 @@ Always include at the end a short section called
     )
 
     return (response.output_text or "").strip()
+
+
+def run_explainer(mode: str, report_text: str, user_question: str | None = None):
+    """
+    Wrapper so other modules can call the explainer using a simple function name.
+    Keeps backward compatibility.
+    """
+    return generate_overall_explanation(
+        mode=mode,
+        report_text=report_text,
+        user_question=user_question
+    )

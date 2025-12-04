@@ -103,3 +103,13 @@ Always end with a brief reminder similar to:
     )
 
     return (response.output_text or "").strip()
+
+
+def run_labs(user_input: str, mode: str, pdf_text: str, memory_snippets):
+    """
+    Wrapper callable by the main MediExplain router.
+    Extracts the 'labs section' from the PDF text and sends it
+    to explain_labs().
+    """
+    labs_section = pdf_text  # SIMPLE: use whole text, or later refine extraction
+    return explain_labs(mode, labs_section)

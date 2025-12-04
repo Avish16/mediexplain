@@ -103,3 +103,5 @@ End with a section called 'Talk to Your Healthcare Team About' plus this idea:
 
     return (response.output_text or "").strip()
 
+def run_careplan(user_input: str, mode: str, pdf_text: str, memory_snippets):
+    return generate_care_plan(mode, pdf_text)

@@ -101,3 +101,6 @@ End with a short 'Safety Reminder' that paraphrases:
     )
 
     return (response.output_text or "").strip()
+
+def run_meds(user_input: str, mode: str, pdf_text: str, memory_snippets):
+    return explain_medications(mode, pdf_text)

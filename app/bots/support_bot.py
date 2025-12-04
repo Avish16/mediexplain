@@ -103,3 +103,5 @@ End with a short paragraph that rephrases:
 
     return (response.output_text or "").strip()
 
+def run_support(user_input: str, mode: str, pdf_text: str, memory_snippets):
+    return generate_support_message(mode, pdf_text)
