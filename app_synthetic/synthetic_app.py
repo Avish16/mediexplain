@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ---------- Core bot imports (your modules) ----------
 from core.synthetic_demographics import generate_demographics_llm
-from core.diagnosis_bot import generate_diagnosis_llm
+from core.diagnosisapp/rag_bot import generate_diagnosis_llm
 from core.timeline_bot import generate_timeline_llm
 from core.lab_bot import generate_lab_report_llm
 from core.vitals_bot import generate_vitals_llm
