@@ -258,5 +258,8 @@ RULES:
         except Exception as e:
             print(f"[Prescription Bot] Attempt {attempt + 1} failed:", e)
             last_error = e
+            continue
 
-    raise ValueError(f"Prescription Bot failed after 3 attempts: {last_error}")
+    # FINAL FALLBACK:
+    print("[billing Bot WARNING] JSON parse failed, returning raw output:", last_error)
+    return raw
