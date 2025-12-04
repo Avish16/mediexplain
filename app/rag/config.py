@@ -1,17 +1,22 @@
+# app/rag/config.py
+
 import os
 
-# Folders
-HTML_DIR = "html"
-PDF_DIR = "pdfs"
-CHROMA_DB_DIR = "mediexplain_chroma"
+# Base directory of the project
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
-# Chroma collection name
+# --------- DATA LOCATIONS ---------
+HTML_DIR = os.path.join(BASE_DIR, "html")                   # folder containing downloaded PMC HTML files
+PDF_DIR = os.path.join(BASE_DIR, "pdfs")                    # optional PDF folder
+CHROMA_DB_DIR = os.path.join(BASE_DIR, "mediexplain_chroma")
+
+# --------- COLLECTION NAME ---------
 COLLECTION_NAME = "med_articles"
 
-# RAG chunking config
+# --------- CHUNKING ---------
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
-# Models
+# --------- MODELS ---------
 EMBED_MODEL = "text-embedding-3-large"
-RAG_LLM_MODEL = "gpt-4.1-mini"   # fast + good
+RAG_LLM_MODEL = "gpt-4.1-mini"
