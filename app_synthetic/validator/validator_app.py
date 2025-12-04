@@ -1,6 +1,7 @@
 import time
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
+#from app.bots.meds_rag_search import search_meds_knowledge
 
 import pandas as pd
 import streamlit as st
@@ -105,143 +106,59 @@ class ConversationTurn:
 # =========================
 # DEMO PIPELINE OUTPUT
 # =========================
+from app.bots.meds_rag_search import search_meds_knowledge
+
+MEDS_VECTOR_STORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"  # <--- your vector store ID
 
 def _demo_result(user_query: str, top_k: int) -> ValidatorResult:
-    """Temporary mock implementation so the Validator UI works
-    even before the real pipeline is wired up.
-    """
+    start = time.time()
 
-    # --- Retrieval demo ---
-    chunks = [
-        RetrievedChunk(
-            rank=i + 1,
-            score=0.95 - i * 0.05,
-            source="NIH — Hypertension Guidelines (2023)",
-            doc_id=f"nih_htn_{i+1}",
-            snippet=(
-                "Hypertension is defined as a sustained blood pressure "
-                "≥130/80 mmHg in adults, confirmed on at least two separate visits."
-            ),
+    # ---- REAL RAG SEARCH ----
+    # rag_text = search_meds_knowledge(
+    #     query=user_query,
+    #     vector_store_id=MEDS_VECTOR_STORE_ID,
+    #     k=top_k,
+    # )
+
+    latency = (time.time() - start) * 1000
+
+    # ---- Build diagnostics ----
+    chunks = []
+    for i, chunk in enumerate(rag_text.split("\n\n")):
+        if not chunk.strip():
+            continue
+        chunks.append(
+            RetrievedChunk(
+                rank=i + 1,
+                score=0.90 - i * 0.03,
+                source="meds_vector_store",
+                doc_id=f"rag_chunk_{i}",
+                snippet=chunk.strip()[:400],
+            )
         )
-        for i in range(top_k)
-    ]
 
     retrieval = RetrievalDiagnostics(
-        latency_ms=115.3,
+        latency_ms=latency,
         top_k=top_k,
         num_returned=len(chunks),
-        index_name="faiss_medical_vector_index",
-        strategy="hybrid (BM25 + embeddings)",
+        index_name="openai_vector_store",
+        strategy="file_search (embeddings)",
         chunks=chunks,
     )
 
-    # --- Routing demo ---
-    routing = RoutingDiagnostics(
-        detected_intent="medication_question",
-        selected_bot="MedicationBot",
-        confidence=0.89,
-        trace=[
-            RoutingTraceStep(
-                step="Pre-processing",
-                detail="Lowercased text, removed PHI-like patterns, normalized units.",
-                meta={"tokens": 42},
-            ),
-            RoutingTraceStep(
-                step="Intent classification",
-                detail="Model predicted 'medication_question' with 0.89 confidence.",
-                meta={"model": "router-small-medical-v1"},
-            ),
-            RoutingTraceStep(
-                step="Bot selection",
-                detail="Selected MedicationBot as primary responder.",
-                meta={"candidate_bots": ["MedicationBot", "ExplainerBot"]},
-            ),
-        ],
-    )
-
-    # --- Safety demo ---
-    safety = SafetyDiagnostics(
-        decision="transform",
-        policy_flags=["medical_advice", "dosage_request"],
-        notes=(
-            "User asked about changing anti-hypertensive dose. "
-            "Answer reframed to educational guidance with clear disclaimer; "
-            "no direct dosage instructions provided."
-        ),
-    )
-
-    # --- Bot output demo ---
-    final_answer = (
-        "It sounds like you are asking whether it is safe to change the dose of your "
-        "blood pressure medication. Only a clinician who knows your full medical history "
-        "and all of your medications can safely make that decision. Sudden dose changes "
-        "may cause your blood pressure to become too high or too low, which can lead to "
-        "symptoms such as dizziness, fainting or chest pain.\n\n"
-        "Please contact your doctor or local clinic before adjusting the medication yourself. "
-        "If you experience severe chest pain, trouble breathing, or feel like you might faint, "
-        "seek emergency care immediately."
-    )
-
-    bot_outputs = BotOutputs(
-        final_answer=final_answer,
-        model_name="gpt-5.1-medical-tuned",
-        temperature=0.2,
-        raw_completion=final_answer,
-        reasoning_notes=(
-            "Combined retrieved hypertension guideline snippets with safety policy rules "
-            "to produce a non-prescriptive, education-only answer and clear escalation advice."
-        ),
-    )
-
-    # --- Synthetic patient demo ---
-    synthetic = SyntheticPatientSnapshot(
-        patient_id="syn_demo_001",
-        demographics={
-            "age": 62,
-            "sex": "Female",
-            "race": "Synthetic",
-            "insurance": "Medicare (synthetic)",
-        },
-        vitals={
-            "bp_latest": "148/92 mmHg",
-            "heart_rate": "78 bpm",
-            "resp_rate": "16 /min",
-            "temperature": "36.8 °C",
-        },
-        labs={
-            "creatinine": "0.9 mg/dL",
-            "eGFR": "78 mL/min/1.73m²",
-            "HbA1c": "6.4 %",
-        },
-        medications={
-            "antihypertensives": [
-                {"name": "Lisinopril", "dose": "20 mg daily"},
-                {"name": "Amlodipine", "dose": "5 mg daily"},
-            ],
-            "lipid_lowering": [{"name": "Atorvastatin", "dose": "20 mg nightly"}],
-        },
-        clinical_notes={
-            "summary": (
-                "Lives alone in an apartment. Limited social support, relies on phone "
-                "check-ins with niece. Mild difficulty understanding medication labels; "
-                "occasionally misses evening doses."
-            ),
-            "recent_visit": (
-                "Primary concern: elevated home BP readings despite perceived adherence."
-            ),
-        },
-    )
-
-    return ValidatorResult(
+    # Everything else stays SAME
+    # Safety, routing, synthetic patient, outputs — unchanged mock
+    result = ValidatorResult(
         query=user_query,
         timestamp=time.time(),
         retrieval=retrieval,
-        routing=routing,
-        safety=safety,
-        bot_outputs=bot_outputs,
-        synthetic_patient=synthetic,
+        routing=_demo_routing(),
+        safety=_demo_safety(),
+        bot_outputs=_demo_bot_output(rag_text),
+        synthetic_patient=_demo_patient(),
     )
 
+    return result
 
 # =========================
 # UI RENDER HELPERS

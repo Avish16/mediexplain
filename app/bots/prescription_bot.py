@@ -1,5 +1,3 @@
-# app/bots/prescription_bot.py
-
 import os
 from openai import OpenAI
 
@@ -8,14 +6,16 @@ try:
 except ImportError:
     st = None
 
+# RAG search helper
+from app.bots.meds_rag_search import search_meds_knowledge
+
+# Set your vector store ID here
+PRESCRIPTION_VECTOR_STORE_ID = 'vs_6930ffbfc0188191997f62a2ebe5daf5'
 
 _client = None
 
 
 def _get_openai_client() -> OpenAI:
-    """
-    Shared client with lazy init, same pattern as other bots.
-    """
     global _client
     if _client is None:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -28,42 +28,24 @@ def _get_openai_client() -> OpenAI:
 
 
 def _persona_block(mode: str) -> str:
-    """
-    Patient vs Caregiver tone.
-    """
     mode = (mode or "").lower()
     if "caregiver" in mode:
         return (
             "Explain these discharge prescriptions to a medically experienced caregiver.\n"
-            "- Assume they understand basic pharmacology and chronic disease management.\n"
-            "- Organize content by medication with sub-headings:\n"
-            "  * Purpose / indication\n"
-            "  * How it is usually taken (but do NOT override written instructions)\n"
-            "  * Common adverse effects and serious red-flag reactions\n"
-            "  * Important drug–drug interactions (especially with home meds)\n"
-            "  * What to monitor at home (BP, sugars, weight, symptoms, etc.).\n"
-            "- You may mention guideline or ICD-10 style labels briefly in parentheses.\n"
+            "- Provide clinical context but do not override clinician instructions.\n"
+            "- Cover indications, warnings, interactions, and monitoring.\n"
         )
-
-    # default: patient mode
     return (
-        "Explain these discharge prescriptions directly to a patient.\n"
-        "- Use very clear, simple language.\n"
-        "- For each medicine, cover:\n"
-        "    • what it is for in everyday words\n"
-        "    • roughly when and how often they are usually told to take it\n"
-        "    • the most common mild side effects in plain language\n"
-        "    • a few serious warning signs when they should call a doctor or go to ER.\n"
-        "- Avoid changing any instructions from the written prescription.\n"
-        "- Encourage the patient to bring this list to their next visit and ask questions.\n"
+        "Explain discharge prescriptions in simple words to a patient.\n"
+        "- Stick closely to the written prescription.\n"
+        "- Do not change dose, timing, or directions.\n"
+        "- Provide gentle safety reminders and red flags.\n"
     )
 
 
 _DISCLAIMER = (
     "These explanations do NOT change your prescription. "
-    "Always follow the written instructions on the prescription label and the advice "
-    "of the prescribing clinician or pharmacist. Do not start, stop, or change doses "
-    "based on this summary."
+    "Always follow the written label and the prescribing clinician."
 )
 
 
@@ -72,52 +54,33 @@ def explain_prescriptions(
     prescriptions_text: str,
     model: str = "gpt-4.1-mini",
     max_tokens: int = 1300,
-) -> str:
-    """
-    Prescription explainer bot.
+):
 
-    Parameters
-    ----------
-    mode : 'patient' or 'caregiver'
-        Controls tone + depth of explanation.
-    prescriptions_text : str
-        Raw text of the prescriptions section (drug name, strength, sig,
-        quantity, refills, notes, etc.) pasted from the report / EMR.
-
-    Returns
-    -------
-    Markdown explanation of the prescriptions, ready to show in the chat UI.
-    """
     client = _get_openai_client()
     persona = _persona_block(mode)
 
     system_prompt = f"""
-You are MediExplain – an AI assistant that helps people understand their
-DISCHARGE PRESCRIPTIONS and outpatient medication orders.
+You are MediExplain – you explain DISCHARGE PRESCRIPTIONS safely.
 
 {persona}
 
 You MUST:
-- Treat the provided text as the source of truth for names, doses, and timing.
-- Never invent new medicines or change the dose or frequency.
-- Never tell the user to stop a medicine, skip doses, double doses, or share meds.
-- Emphasize that all dose decisions belong to their clinical team.
-- Call out potential interaction clusters in general terms (e.g., 'blood thinner'
-  plus 'anti-inflammatory pain medicine' can raise bleeding risk), but always tell
-  them to confirm details with their clinician or pharmacist.
+- Treat the provided prescription text as truth.
+- Never invent new medicines or instructions.
+- Never tell users to change their medicines.
+- Highlight general interaction patterns and red-flag symptoms.
 
-Finish with a short 'Safety Reminder' that paraphrases:
+End with a 'Safety Reminder' paraphrasing:
 
 {_DISCLAIMER}
 """
 
     user_content = (
-        "Here is the prescriptions section or medication list to explain.\n"
-        "You may see drug names, strengths, SIG instructions, quantity, and refills.\n"
+        "Prescription section + retrieved evidence:\n"
         "--------------------\n"
         f"{prescriptions_text}\n"
         "--------------------\n"
-        "Focus ONLY on explaining and contextualizing what is already written here.\n"
+        "Explain ONLY what is already in the text.\n"
     )
 
     response = client.responses.create(
@@ -131,9 +94,22 @@ Finish with a short 'Safety Reminder' that paraphrases:
 
     return (response.output_text or "").strip()
 
+
 def run_prescriptions(user_input: str, mode: str, pdf_text: str, memory_snippets):
     """
-    Wrapper so the main router can call the prescription explainer
-    with the same signature as other bots.
+    1. RAG retrieval from medication knowledge PDFs
+    2. Fuse PDF context + RAG context
+    3. Send to prescription explainer
     """
-    return explain_prescriptions(mode, pdf_text)
+
+    # ---- Retrieve drug knowledge ----
+    rag_context = search_meds_knowledge(
+        query=user_input,
+        vector_store_id=PRESCRIPTION_VECTOR_STORE_ID,
+        k=6,
+    )
+
+    # ---- Fuse PDF + RAG ----
+    combined = pdf_text + "\n\n" + rag_context
+
+    return explain_prescriptions(mode, combined)

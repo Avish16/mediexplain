@@ -33,6 +33,7 @@ from app.bots.careplan_bot import run_careplan, generate_care_plan
 from app.bots.snapshot_bot import run_snapshot, generate_snapshot
 from app.bots.support_bot import run_support, generate_support_message
 from app.bots.prescription_bot import explain_prescriptions, run_prescriptions
+from app.bots.meds_rag_search import search_meds_knowledge
 
 
 # =========================================================

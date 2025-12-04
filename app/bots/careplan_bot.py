@@ -6,6 +6,7 @@ try:
 except ImportError:
     st = None
 
+# vs_6930ffbfc0188191997f62a2ebe5daf5 
 
 _client = None
 
