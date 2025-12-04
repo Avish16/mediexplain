@@ -94,6 +94,14 @@ class ValidatorResult:
     synthetic_patient: Optional[SyntheticPatientSnapshot]
 
 
+# NEW: one entry per question–answer pair stored in memory/history
+@dataclass
+class ConversationTurn:
+    timestamp: float
+    query: str
+    answer: str
+
+
 # =========================
 # DEMO PIPELINE OUTPUT
 # =========================
@@ -264,6 +272,9 @@ def _render_overview(result: ValidatorResult) -> None:
         f"- **Safety flags:** {', '.join(result.safety.policy_flags) or 'None'}"
     )
 
+    st.markdown("### Full query")
+    st.write(result.query)
+
 
 def _render_retrieval_panel(result: ValidatorResult) -> None:
     st.subheader("Retrieved evidence")
@@ -375,6 +386,34 @@ def _render_raw_json_panel(result: ValidatorResult) -> None:
     st.json(asdict(result))
 
 
+# NEW: history renderer
+def _render_history_panel(history: List[ConversationTurn]) -> None:
+    st.subheader("Validator Q&A history (this session)")
+    if not history:
+        st.info("No previous runs recorded yet.")
+        return
+
+    # Most recent first
+    rows = [
+        {
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t.timestamp)),
+            "Question": t.query[:120] + ("…" if len(t.query) > 120 else ""),
+            "Answer (preview)": t.answer[:120] + ("…" if len(t.answer) > 120 else ""),
+        }
+        for t in reversed(history)
+    ]
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    st.markdown("### Full questions and answers")
+    for idx, t in enumerate(reversed(history), start=1):
+        with st.expander(f"Run {idx} – {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(t.timestamp))}"):
+            st.markdown("**Question:**")
+            st.write(t.query)
+            st.markdown("**Answer:**")
+            st.write(t.answer)
+
+
 # =========================
 # MAIN ENTRYPOINT
 # =========================
@@ -383,7 +422,7 @@ def run_validator_page() -> None:
     st.title("🩺 MediExplain – Validator Console")
     st.caption(
         "Developer-facing console for diagnostics on retrieval, routing, "
-        "safety, final bot output and synthetic patient context."
+        "safety, final bot output, synthetic patient context, and Q&A history."
     )
 
     st.sidebar.header("Validator controls")
@@ -408,8 +447,11 @@ def run_validator_page() -> None:
 
     run_btn = st.sidebar.button("Run validation", type="primary")
 
+    # session state for last result + history
     if "validator_last_result" not in st.session_state:
         st.session_state.validator_last_result = None
+    if "validator_history" not in st.session_state:
+        st.session_state.validator_history: List[ConversationTurn] = []
 
     if run_btn or (
         not reuse_last and st.session_state.validator_last_result is None
@@ -420,13 +462,25 @@ def run_validator_page() -> None:
 
         with st.spinner("Running mock MediExplain pipeline…"):
             result = _demo_result(user_query.strip(), top_k=top_k)
+
         st.session_state.validator_last_result = result
+
+        # push Q&A into in-memory history
+        st.session_state.validator_history.append(
+            ConversationTurn(
+                timestamp=result.timestamp,
+                query=result.query,
+                answer=result.bot_outputs.final_answer,
+            )
+        )
 
     result: Optional[ValidatorResult] = st.session_state.validator_last_result
 
     if result is None:
         st.info("Enter a query in the sidebar and click **Run validation**.")
         return
+
+    history: List[ConversationTurn] = st.session_state.validator_history
 
     tabs = st.tabs(
         [
@@ -436,6 +490,7 @@ def run_validator_page() -> None:
             "Bot outputs",
             "Safety",
             "Synthetic patient",
+            "Q&A History",
             "Raw JSON",
         ]
     )
@@ -447,6 +502,7 @@ def run_validator_page() -> None:
         bot_tab,
         safety_tab,
         patient_tab,
+        history_tab,
         json_tab,
     ) = tabs
 
@@ -462,6 +518,8 @@ def run_validator_page() -> None:
         _render_safety_panel(result)
     with patient_tab:
         _render_synthetic_patient_panel(result)
+    with history_tab:
+        _render_history_panel(history)
     with json_tab:
         _render_raw_json_panel(result)
 
