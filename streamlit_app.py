@@ -1,22 +1,23 @@
 import streamlit as st
-import sys, os
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# No need for sys.path hacks here – Streamlit Cloud runs from repo root
 
-st.set_page_config(page_title="Synthetic Main Page", layout="wide")
+st.set_page_config(page_title="MediExplain", layout="wide")
 
+# Use **relative paths from the repo root**:
+# these must match exactly how they appear in GitHub
 Synthetic_App = st.Page(
-    "/workspaces/mediexplain/app_synthetic/synthetic_app.py",
-    title="Synthetic App"
+    "app_synthetic/synthetic_app.py",
+    title="Synthetic App",
 )
 
 chat_app = st.Page(
-    "/workspaces/mediexplain/app_synthetic/chat_app.py",
-    title="MediExplain Chatbot"
+    "app_synthetic/chat_app.py",
+    title="MediExplain Chatbot",
 )
 
 validator_app = st.Page(
-    "/workspaces/mediexplain/app_synthetic/validator/validator_app.py",
+    "app_synthetic/validator/validator_app.py",
     title="Validator Console",
 )
 
@@ -24,7 +25,7 @@ pages = {
     "Home": [
         Synthetic_App,
         chat_app,
-        validator_app,   # ← ADD THIS LINE
+        validator_app,
     ]
 }
 
