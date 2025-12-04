@@ -6,15 +6,17 @@ try:
 except ImportError:
     st = None
 
-# RAG search helper
 from app.bots.meds_rag_search import search_meds_knowledge
 
-# Set your vector store ID here
-PRESCRIPTION_VECTOR_STORE_ID = 'vs_6930ffbfc0188191997f62a2ebe5daf5'
+# ✅ Your prescription/meds vector store ID
+PRESCRIPTION_VECTOR_STORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
 
 _client = None
 
 
+# =========================================================
+# OPENAI CLIENT
+# =========================================================
 def _get_openai_client() -> OpenAI:
     global _client
     if _client is None:
@@ -27,60 +29,74 @@ def _get_openai_client() -> OpenAI:
     return _client
 
 
+# =========================================================
+# PERSONA
+# =========================================================
 def _persona_block(mode: str) -> str:
     mode = (mode or "").lower()
+
     if "caregiver" in mode:
         return (
-            "Explain these discharge prescriptions to a medically experienced caregiver.\n"
-            "- Provide clinical context but do not override clinician instructions.\n"
-            "- Cover indications, warnings, interactions, and monitoring.\n"
+            "You are explaining DISCHARGE PRESCRIPTIONS to a medically experienced caregiver.\n"
+            "- Provide clinical context but do NOT override clinician instructions.\n"
+            "- Cover indications, major warnings, interactions, and monitoring needs.\n"
+            "- You may mention common guideline concepts at a high level.\n"
         )
+
+    # PATIENT MODE (default)
     return (
-        "Explain discharge prescriptions in simple words to a patient.\n"
-        "- Stick closely to the written prescription.\n"
-        "- Do not change dose, timing, or directions.\n"
-        "- Provide gentle safety reminders and red flags.\n"
+        "You are explaining DISCHARGE PRESCRIPTIONS directly to a patient.\n"
+        "- Stick closely to the written prescription text.\n"
+        "- Do NOT change dose, timing, or instructions.\n"
+        "- Use clear, non-technical language and gentle safety reminders.\n"
     )
 
 
 _DISCLAIMER = (
     "These explanations do NOT change your prescription. "
-    "Always follow the written label and the prescribing clinician."
+    "Always follow the written label and your prescribing clinician’s instructions."
 )
 
 
+# =========================================================
+# CORE PRESCRIPTION EXPLAINER
+# =========================================================
 def explain_prescriptions(
     mode: str,
-    prescriptions_text: str,
+    prescriptions_context_text: str,
+    conversation_history: str = "",
     model: str = "gpt-4.1-mini",
     max_tokens: int = 1300,
-):
+) -> str:
 
     client = _get_openai_client()
     persona = _persona_block(mode)
 
     system_prompt = f"""
-You are MediExplain – you explain DISCHARGE PRESCRIPTIONS safely.
+You are MediExplain – you explain DISCHARGE PRESCRIPTIONS safely and clearly.
 
 {persona}
 
+### Conversation so far
+{conversation_history}
+
 You MUST:
-- Treat the provided prescription text as truth.
+- Treat the provided prescription text as the source of truth.
 - Never invent new medicines or instructions.
-- Never tell users to change their medicines.
-- Highlight general interaction patterns and red-flag symptoms.
+- Never tell users to change dose, skip doses, or stop medicines.
+- Highlight general interaction patterns and red-flag symptoms in broad terms only.
+- Encourage users to confirm details with their clinician or pharmacist.
 
-End with a 'Safety Reminder' paraphrasing:
-
+End with a short **Safety Reminder** that paraphrases:
 {_DISCLAIMER}
 """
 
     user_content = (
-        "Prescription section + retrieved evidence:\n"
+        "Here is the discharge prescription text and any retrieved medication evidence:\n"
         "--------------------\n"
-        f"{prescriptions_text}\n"
+        f"{prescriptions_context_text}\n"
         "--------------------\n"
-        "Explain ONLY what is already in the text.\n"
+        "Explain ONLY what is already present in this text.\n"
     )
 
     response = client.responses.create(
@@ -95,21 +111,46 @@ End with a 'Safety Reminder' paraphrasing:
     return (response.output_text or "").strip()
 
 
-def run_prescriptions(user_input: str, mode: str, pdf_text: str, memory_snippets):
+# =========================================================
+# ENTRYPOINT FOR ORCHESTRATOR
+# =========================================================
+def run_prescriptions(
+    user_input: str,
+    mode: str,
+    pdf_text: str,
+    memory_snippets,
+    conversation_history: str = "",
+):
     """
-    1. RAG retrieval from medication knowledge PDFs
-    2. Fuse PDF context + RAG context
-    3. Send to prescription explainer
+    Prescription bot entrypoint used by chat_app.
+
+    Flow:
+    1. Use the user's question to query the medication RAG index.
+    2. Combine discharge prescription text from the report + external literature.
+    3. Send merged context into explain_prescriptions().
     """
 
-    # ---- Retrieve drug knowledge ----
-    rag_context = search_meds_knowledge(
+    # 1) Retrieve external evidence from your RAG index
+    rag_evidence = search_meds_knowledge(
         query=user_input,
+        top_k=6,
         vector_store_id=PRESCRIPTION_VECTOR_STORE_ID,
-        k=6,
+    ) or ""
+
+    # 2) Merge report text and RAG evidence
+    combined_context = (
+        "=== DISCHARGE PRESCRIPTION TEXT FROM REPORT ===\n"
+        f"{(pdf_text or '').strip()}\n\n"
+        "=== EVIDENCE FROM MEDICATION SAFETY LITERATURE (RAG) ===\n"
+        f"{rag_evidence.strip()}\n"
     )
 
-    # ---- Fuse PDF + RAG ----
-    combined = pdf_text + "\n\n" + rag_context
+    # 3) Normalize persona mode
+    persona_mode = "caregiver" if "caregiver" in (mode or "").lower() else "patient"
 
-    return explain_prescriptions(mode, combined)
+    # 4) Call the prescription explainer LLM
+    return explain_prescriptions(
+        mode=persona_mode,
+        prescriptions_context_text=combined_context,
+        conversation_history=conversation_history,
+    )

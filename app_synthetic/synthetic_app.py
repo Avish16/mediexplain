@@ -222,6 +222,17 @@ if st.button("🚀 Generate FULL Synthetic Case"):
             gender,
         )
 
+        # ====================================================
+        # 🩹 FIX: ensure diagnosis is always a dict
+        # ====================================================
+        if isinstance(diagnosis, str):
+            diagnosis = {
+                "primary_diagnosis": diagnosis,
+                "icd10_code": "",
+                "snomed_code": ""
+            }
+
+
         # 3) TIMELINE BOT
         timeline = run_step(
             "Timeline Bot",

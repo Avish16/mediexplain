@@ -6,13 +6,13 @@ try:
 except ImportError:
     st = None
 
-
 _client = None
 
 
-
+# ----------------------------------------------------------
+# OPENAI CLIENT
+# ----------------------------------------------------------
 def _get_openai_client() -> OpenAI:
-    """Return a singleton OpenAI client using env or Streamlit secrets."""
     global _client
     if _client is None:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -24,86 +24,88 @@ def _get_openai_client() -> OpenAI:
     return _client
 
 
+# ----------------------------------------------------------
+# PERSONA
+# ----------------------------------------------------------
 def _persona_block(mode: str) -> str:
     mode = (mode or "").lower()
-    if mode == "caregiver":
+    
+    if "caregiver" in mode:
         return (
-            "You are explaining this report to a medically experienced caregiver.\n"
-            "- Use precise clinical language and documentation style.\n"
-            "- Where possible, reference ICD-10 descriptions, typical clinical course,\n"
-            "  risk factors, and red-flag symptoms.\n"
-            "- You may use abbreviations like MI, CHF, COPD, etc., but define them once.\n"
-            "- Structure your explanation into clear sections (Diagnosis, Findings,\n"
-            "  Clinical reasoning, Monitoring, When to escalate care).\n"
+            "You are explaining this medical case to a medically experienced caregiver.\n"
+            "- Use clinical terminology but remain readable.\n"
+            "- Provide structured sections (Diagnosis, Findings, Monitoring, Red Flags).\n"
+            "- Reference guideline logic when helpful.\n"
         )
-    # default: patient
+    
+    # PATIENT FRIENDLY MODE
     return (
-        "You are explaining this report directly to a non-medical patient.\n"
-        "- Use calm, reassuring, plain language (around 6th–8th grade level).\n"
-        "- Avoid medical jargon. If you must use a term, explain it in simple words.\n"
-        "- Focus on what is happening, why it matters, and what they might discuss\n"
-        "  with their doctor.\n"
-        "- Use short paragraphs and bullet points.\n"
+        "You are explaining this medical report to a patient in simple, calm language.\n"
+        "- Avoid jargon.\n"
+        "- Use short sentences and analogies.\n"
+        "- Focus on reassurance, clarity, and understanding.\n"
     )
 
 
+# ----------------------------------------------------------
+# DISCLAIMER
+# ----------------------------------------------------------
 _DISCLAIMER = (
-    "Important: This explanation is for education only and is **not** a diagnosis "
-    "or medical advice. The patient must always confirm everything with their "
-    "licensed healthcare team."
+    "This explanation is for understanding only — it is not a diagnosis or medical advice. "
+    "The patient must confirm everything with their licensed healthcare team."
 )
 
 
+# ----------------------------------------------------------
+# MAIN GENERATION FUNCTION (CONVERSATIONAL)
+# ----------------------------------------------------------
 def generate_overall_explanation(
     mode: str,
     report_text: str,
     user_question: str | None = None,
+    conversation_history: str = "",
     model: str = "gpt-4.1-mini",
     max_tokens: int = 1200,
 ) -> str:
-    """
-    High-level case explainer bot.
-
-    Parameters
-    ----------
-    mode : 'patient' or 'caregiver'
-    report_text : full clinical text / EMR / synthetic case
-    user_question : optional specific question from the user
-    model : OpenAI model name
-    max_tokens : max output tokens
-
-    Returns
-    -------
-    Markdown string explanation.
-    """
+    
     client = _get_openai_client()
-
     persona = _persona_block(mode)
 
-    question_part = (
-        f"\nThe person has this specific question:\n\"{user_question}\"\n"
-        if user_question
-        else "\nAddress the most important parts a person is likely worried about.\n"
-    )
+    # Add question block only if present
+    if user_question:
+        question_part = f"\nThe user is asking specifically:\n\"{user_question}\"\n"
+    else:
+        question_part = "\nPlease summarize the most important concerns.\n"
 
+    # SYSTEM PROMPT with conversation history
     system_prompt = f"""
-You are MediExplain – an AI assistant that explains medical reports clearly and safely.
+You are MediExplain – an AI assistant that explains medical reports clearly.
 
 {persona}
 
-Always include at the end a short section called
-'Important Reminder' containing this (paraphrased in your own words):
+### Conversation History
+{conversation_history}
+
+You MUST:
+- Stay consistent with the medical report.
+- Avoid adding new diagnoses or medication changes.
+- Answer in the persona style.
+- Use calm, structured, and safe medical explanations.
+
+End with a section titled **Important Reminder** paraphrasing:
 
 {_DISCLAIMER}
 """
 
-    user_content = (
-        "Here is the medical report that needs to be explained:\n\n"
-        "--------------------\n"
-        f"{report_text}\n"
-        "--------------------\n"
-        f"{question_part}"
-    )
+    user_content = f"""
+Here is the medical report that needs to be explained:
+
+--------------------
+{report_text}
+--------------------
+
+{question_part}
+"""
 
     response = client.responses.create(
         model=model,
@@ -117,13 +119,18 @@ Always include at the end a short section called
     return (response.output_text or "").strip()
 
 
-def run_explainer(mode: str, report_text: str, user_question: str | None = None):
-    """
-    Wrapper so other modules can call the explainer using a simple function name.
-    Keeps backward compatibility.
-    """
+# ----------------------------------------------------------
+# EXTERNAL ENTRYPOINT (USED BY ORCHESTRATOR)
+# ----------------------------------------------------------
+def run_explainer(
+    mode: str,
+    report_text: str,
+    user_question: str | None = None,
+    conversation_history: str = "",
+):
     return generate_overall_explanation(
         mode=mode,
         report_text=report_text,
-        user_question=user_question
+        user_question=user_question,
+        conversation_history=conversation_history
     )

@@ -85,13 +85,18 @@ def render_vitals_section(vitals: dict) -> str:
 # ============================================================
 #  PLAIN TEXT VITALS BOT (NO JSON ANYWHERE)
 # ============================================================
-def generate_vitals_llm(age: int, gender: str, diagnosis: dict, timeline: dict) -> dict:
+def generate_vitals_llm(age: int, gender: str, diagnosis, timeline) -> str:
     """
-    Generate a large, structured vitals report as JSON.
-    Multiple timepoints + detailed measurements, but easy to render as key: value.
+    Generate a plain-text VITALS REPORT.
+    No JSON parsing, no schema enforcement.
+    Whatever the LLM outputs is returned as raw text.
     """
 
-    dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
+    # --- Normalize diagnosis (string OR dict) ---
+    if isinstance(diagnosis, dict):
+        dx = diagnosis.get("primary_diagnosis", "Unknown Condition")
+    else:
+        dx = str(diagnosis)[:200]  # take first sentence or so
 
     prompt = f"""
 You are generating a detailed VITALS REPORT for a hospitalized adult patient.
@@ -101,66 +106,17 @@ PATIENT:
 - Gender: {gender}
 - Primary Diagnosis: {dx}
 
-HARD RULES:
-- Output ONLY valid JSON.
-- JSON must start with '{{' and end with '}}'.
-- NO markdown, NO backticks, NO commentary outside JSON.
-- NO raw newlines inside strings.
+Return a clear, human-readable vitals section with:
+- At least 6–10 time points over 24 hours
+- Heart rate, blood pressure, temperature, respiratory rate, SpO2, pain score
+- Occasional weight, BMI, and composite score (NEWS, MEWS)
+- A final short summary of overall interpretation
 
-SCHEMA (DO NOT CHANGE KEYS):
-
-{{
-  "collection_metadata": {{
-    "collection_date": "YYYY-MM-DD",
-    "device": "Automated vitals monitor",
-    "location": "Inpatient room",
-    "encounter_id": "VIT-XXXXXX"
-  }},
-  "vital_series": [
-    {{
-      "time": "HH:MM",
-      "context": "Resting | Post-ambulation | Post-medication | Nighttime | Early-morning",
-      "measurements": [
-        {{
-          "name": "Heart Rate",
-          "value": 0,
-          "unit": "bpm",
-          "reference_range": "60-100",
-          "flag": "H|L|N",
-          "interpretation": "short phrase"
-        }},
-        {{
-          "name": "Blood Pressure",
-          "value": "120/80",
-          "unit": "mmHg",
-          "reference_range": "90/60-130/85",
-          "flag": "H|L|N",
-          "interpretation": "short phrase"
-        }}
-      ]
-    }}
-  ],
-  "overall_interpretation": "LONG paragraph summarizing hemodynamic stability, trends, and risk."
-}}
-
-POPULATION REQUIREMENTS:
-- vital_series: at least 8 different time points spanning 24 hours.
-- EACH timepoint's "measurements" must include at minimum:
-  - Heart Rate
-  - Blood Pressure
-  - Respiratory Rate
-  - Temperature
-  - SpO2
-  - Pain Score
-- Additionally, scatter in:
-  - Weight (once or twice),
-  - BMI,
-  - MEWS or NEWS-like composite score (as a 'name'),
-  - any other relevant bedside scoring.
-- For all vital values, keep them physiologically realistic for {age}-year-old {gender} with {dx}.
-- Flags: "H" (high), "L" (low), "N" (normal).
-
-RETURN ONLY THE JSON OBJECT. DO NOT wrap in ```json or add explanations.
+VERY IMPORTANT:
+- Output MUST be plain text.
+- DO NOT use JSON.
+- DO NOT wrap anything in ``` or code fences.
+Just write a realistic vitals narrative like a hospital chart.
 """
 
     response = client.responses.create(
@@ -169,5 +125,5 @@ RETURN ONLY THE JSON OBJECT. DO NOT wrap in ```json or add explanations.
         max_output_tokens=2500,
     )
 
-    raw = (response.output_text or "").replace("```json", "").replace("```", "").strip()
-    return _safe_extract_json(raw)
+    # Return raw output exactly as provided
+    return (response.output_text or "").strip()

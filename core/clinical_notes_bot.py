@@ -270,12 +270,15 @@ RULES:
             response = client.responses.create(
                 model="gpt-4.1",
                 input=prompt,
-                max_output_tokens=6000,
+                max_output_tokens=2000,
             )
             raw = (response.output_text or "").strip()
             return _safe_extract_json(raw)
         except Exception as e:
             print(f"[Clinical Notes Bot] Attempt {attempt+1} failed:", e)
             last_error = e
+            continue
 
-    raise ValueError(f"Clinical Notes Bot failed after 3 attempts: {last_error}")
+    # FINAL FALLBACK:
+    print("[Clinical Bot WARNING] JSON parse failed, returning raw output:", last_error)
+    return raw

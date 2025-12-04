@@ -200,5 +200,5 @@ Always close with one sentence reminding that:
 
     return (response.output_text or "").strip()
 
-def run_snapshot(user_input: str, mode: str, pdf_text: str, memory_snippets):
+def run_snapshot(user_input: str, mode: str, pdf_text: str, memory_snippets,conversation_history=""):
     return generate_snapshot(mode, pdf_text)

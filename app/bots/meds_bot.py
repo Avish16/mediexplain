@@ -9,12 +9,15 @@ except ImportError:
 # RAG search helper
 from app.bots.meds_rag_search import search_meds_knowledge
 
-# Set your vector store ID here
+# ✅ Your meds vector store ID
 MEDS_VECTOR_STORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
 
 _client = None
 
 
+# =========================================================
+# OPENAI CLIENT
+# =========================================================
 def _get_openai_client() -> OpenAI:
     global _client
     if _client is None:
@@ -27,56 +30,73 @@ def _get_openai_client() -> OpenAI:
     return _client
 
 
+# =========================================================
+# PERSONA
+# =========================================================
 def _persona_block(mode: str) -> str:
     mode = (mode or "").lower()
-    if mode == "caregiver":
+
+    if "caregiver" in mode:
         return (
-            "Explain these medications to an experienced caregiver.\n"
-            "- Include mechanism, indications, key side effects, and interactions.\n"
-            "- Reference guideline logic (e.g., GDMT) when relevant.\n"
+            "You are explaining these medications to a medically experienced caregiver.\n"
+            "- Include mechanism of action, typical indications, and major side effects.\n"
+            "- Mention common interaction concerns in general terms.\n"
+            "- Do NOT give exact prescribing instructions or change the regimen.\n"
         )
+
+    # PATIENT MODE (default)
     return (
-        "Explain these medications to a patient in simple, reassuring language.\n"
-        "- Focus on what each medicine does and why it matters.\n"
-        "- Avoid medical jargon unless explained.\n"
+        "You are explaining these medications to a patient in simple, reassuring language.\n"
+        "- Focus on what each medicine is for and why it matters.\n"
+        "- Avoid heavy jargon; if you must use a medical word, explain it.\n"
+        "- Highlight key side effects and safety warnings without causing panic.\n"
     )
 
 
 _DISCLAIMER = (
-    "Do not change, start, or stop medicines based on this explanation. "
-    "Always confirm with the prescribing clinician."
+    "Do not start, stop, or change any medication based on this explanation. "
+    "Always confirm with the prescribing clinician or pharmacist."
 )
 
 
+# =========================================================
+# CORE MEDICATION EXPLAINER
+# =========================================================
 def explain_medications(
     mode: str,
-    meds_section_text: str,
+    meds_context_text: str,
+    conversation_history: str = "",
     model: str = "gpt-4.1-mini",
-    max_tokens: int = 1100,
+    max_tokens: int = 1200,
 ) -> str:
 
     client = _get_openai_client()
     persona = _persona_block(mode)
 
     system_prompt = f"""
-You are MediExplain – an AI assistant that explains medication lists safely.
+You are MediExplain – an AI assistant that explains medication information safely.
 
 {persona}
 
+### Conversation so far
+{conversation_history}
+
 You MUST:
-- Never override written prescription instructions.
-- Never invent new drug names or change doses.
-- Highlight warning signs carefully without scaring the patient.
+- Use ONLY the medication names and facts present in the provided text.
+- Never invent new medicines, doses, or instructions.
+- Never advise dose changes, skipping doses, or stopping treatment.
+- Emphasize that final decisions belong to the clinician.
 
-End with a 'Safety Reminder' paraphrasing:
-
+End with a short **Safety Reminder** paraphrasing:
 {_DISCLAIMER}
 """
 
     user_content = (
-        "Medication list + retrieved knowledge:\n"
+        "Here is the medication-related information to explain. It may include:\n"
+        "- Text from the patient's medical report\n"
+        "- Retrieved literature about side effects and safety\n"
         "--------------------\n"
-        f"{meds_section_text}\n"
+        f"{meds_context_text}\n"
         "--------------------\n"
     )
 
@@ -92,21 +112,46 @@ End with a 'Safety Reminder' paraphrasing:
     return (response.output_text or "").strip()
 
 
-def run_meds(user_input: str, mode: str, pdf_text: str, memory_snippets):
+# =========================================================
+# ENTRYPOINT FOR ORCHESTRATOR
+# =========================================================
+def run_meds(
+    user_input: str,
+    mode: str,
+    pdf_text: str,
+    memory_snippets,
+    conversation_history: str = "",
+):
     """
-    1. RAG search from medication knowledge PDFs
-    2. Fuse PDF context + RAG context
-    3. Send to explainer
+    Medication bot entrypoint used by chat_app.
+
+    Flow:
+    1. Use the user's question to query the medication RAG index.
+    2. Combine report text (pdf_text) + RAG evidence.
+    3. Send merged context into explain_medications().
     """
 
-    # ---- RAG retrieval ----
+    # 1) RAG retrieval from your meds vector store
     rag_context = search_meds_knowledge(
         query=user_input,
+        top_k=6,
         vector_store_id=MEDS_VECTOR_STORE_ID,
-        k=6,
     )
 
-    # ---- Combine PDF + RAG ----
-    combined_context = pdf_text + "\n\n" + rag_context
+    # 2) Build combined context
+    combined_context = (
+        "=== MEDICATION-RELATED TEXT FROM REPORT ===\n"
+        f"{(pdf_text or '').strip()}\n\n"
+        "=== EVIDENCE FROM MEDICATION SAFETY LITERATURE (RAG) ===\n"
+        f"{rag_context.strip()}\n"
+    )
 
-    return explain_medications(mode, combined_context)
+    # 3) Normalize mode string for persona
+    persona_mode = "caregiver" if "caregiver" in (mode or "").lower() else "patient"
+
+    # 4) Call the explainer
+    return explain_medications(
+        mode=persona_mode,
+        meds_context_text=combined_context,
+        conversation_history=conversation_history,
+    )

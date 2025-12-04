@@ -205,6 +205,9 @@ RULES:
         except Exception as e:
             print(f"[Procedure Bot] Attempt {attempt + 1} failed:", e)
             last_error = e
+            continue
 
-    # If all 3 attempts fail, surface final error
-    raise ValueError(f"Procedure Bot failed after 3 attempts: {last_error}")
+    # FINAL FALLBACK:
+    print("[Procedure Bot WARNING] JSON parse failed, returning raw output:", last_error)
+    return raw
+    
