@@ -3,9 +3,12 @@
 import os
 import sys
 
-# --- Fix for ChromaDB sqlite3 issue (must be BEFORE chromadb import) ---
-__import__("pysqlite3")
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+# --- ChromaDB sqlite shim (Linux/macOS); Windows uses stdlib ---
+try:
+    __import__("pysqlite3")
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
 
 import chromadb
 from chromadb.utils import embedding_functions

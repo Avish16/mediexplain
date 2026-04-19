@@ -3,7 +3,8 @@ openai>=1.40.0
 chromadb
 beautifulsoup4==4.12.3
 lxml==5.2.1
-pysqlite3-binary
+# Bundled sqlite for Chroma on Linux/macOS; no Windows wheels — stdlib sqlite is used on Windows.
+pysqlite3-binary; sys_platform != "win32"
 
 requests==2.32.3
 duckdb==1.0.0

@@ -3,9 +3,12 @@ import sys
 import glob
 import logging
 
-# --- Fix for ChromaDB sqlite3 issue (must be BEFORE import chromadb) ---
-__import__("pysqlite3")
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+# --- ChromaDB: newer sqlite via pysqlite3 on Linux/macOS; Windows uses stdlib sqlite ---
+try:
+    __import__("pysqlite3")
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
 
 import streamlit as st
 from openai import OpenAI
