@@ -2,7 +2,11 @@
 """
 One-time script to build a vector store for medication side-effect PDFs.
 
-Usage (from project root in Codespaces):
+Usage (from repository root):
+
+    python mediexplain/app/bots/meds_rag_index.py
+
+Or from inside `mediexplain/`:
 
     python app/bots/meds_rag_index.py
 
