@@ -36,11 +36,16 @@ logging.basicConfig(level=logging.INFO)
 # HELPERS
 # -------------------------------------------------
 def load_api_key():
-    try:
-        return st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        st.error("⚠️ OpenAI API key not found in Streamlit secrets.")
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        try:
+            key = st.secrets.get("OPENAI_API_KEY", "")
+        except Exception:
+            key = ""
+    if not key:
+        st.error("⚠️ OPENAI_API_KEY not found. Set it in .streamlit/secrets.toml or as an environment variable.")
         st.stop()
+    return key
 
 
 def extract_text_from_html(path: str) -> str:

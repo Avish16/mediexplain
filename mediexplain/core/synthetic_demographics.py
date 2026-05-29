@@ -11,13 +11,23 @@ except ImportError:
 # OPENAI CLIENT
 # ------------------------------------------------------------
 def _get_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY") or (st.secrets["OPENAI_API_KEY"] if st else None)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key and st is not None:
+        api_key = st.secrets.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set.")
     return OpenAI(api_key=api_key)
 
 
-client = _get_openai_client()
+# Lazy singleton — resolved on first call, not at import time
+_client = None
+
+
+def _client_instance():
+    global _client
+    if _client is None:
+        _client = _get_openai_client()
+    return _client
 
 
 # ------------------------------------------------------------
@@ -69,7 +79,7 @@ Age: {age}
 Gender: {gender}
 """
 
-    response = client.responses.create(
+    response = _client_instance().responses.create(
         model="gpt-4.1",
         input=prompt,
         max_output_tokens=500,

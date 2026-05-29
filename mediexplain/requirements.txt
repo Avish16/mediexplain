@@ -7,7 +7,7 @@ google-generativeai>=0.7.0
 
 # Vector Store
 chromadb>=0.5.0
-# Linux/macOS only â€” ChromaDB sqlite compatibility shim (no Windows wheel)
+# Linux/macOS only — ChromaDB sqlite compatibility shim (no Windows wheel)
 pysqlite3-binary>=0.5.0; sys_platform != "win32"
 
 # NLP / ML
@@ -15,10 +15,11 @@ sentence-transformers>=3.0.0
 numpy>=1.26.0
 pandas>=2.2.0
 
-# Parsing
+# Parsing & PDF
 beautifulsoup4>=4.12.0
 lxml>=5.2.0
 pypdf>=4.2.0
+reportlab>=4.0.0
 
 # Database
 duckdb>=1.0.0

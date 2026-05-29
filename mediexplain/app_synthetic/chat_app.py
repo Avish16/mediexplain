@@ -40,7 +40,14 @@ from app.bots.meds_rag_search import search_meds_knowledge
 # =========================================================
 st.set_page_config(page_title="MediExplain Chatbot", layout="wide")
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+def _get_api_key() -> str:
+    key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
+    if not key:
+        st.error("⚠️ OPENAI_API_KEY not found. Set it in .streamlit/secrets.toml or as an environment variable.")
+        st.stop()
+    return key
+
+client = OpenAI(api_key=_get_api_key())
 
 
 # =========================================================
