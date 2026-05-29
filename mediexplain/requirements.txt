@@ -1,18 +1,30 @@
-streamlit
+# Core UI
+streamlit>=1.35.0
+
+# LLM & Embeddings
 openai>=1.40.0
-chromadb
-beautifulsoup4==4.12.3
-lxml==5.2.1
-# Bundled sqlite for Chroma on Linux/macOS; no Windows wheels — stdlib sqlite is used on Windows.
-pysqlite3-binary; sys_platform != "win32"
+google-generativeai>=0.7.0
 
-requests==2.32.3
-duckdb==1.0.0
-orjson==3.10.7
-google-generativeai
+# Vector Store
+chromadb>=0.5.0
+# Linux/macOS only — ChromaDB sqlite compatibility shim (no Windows wheel)
+pysqlite3-binary>=0.5.0; sys_platform != "win32"
 
-pandas==2.2.2
-sentence-transformers==3.0.1
-pypdf
-tqdm
-numpy
+# NLP / ML
+sentence-transformers>=3.0.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Parsing
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+pypdf>=4.2.0
+
+# Database
+duckdb>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.32.0
+orjson>=3.10.0
+tqdm>=4.66.0

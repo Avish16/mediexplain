@@ -1,5 +1,28 @@
+# Secrets
 .streamlit/secrets.toml
 mediexplain/.streamlit/secrets.toml
+*.env
+.env
+
+# ChromaDB (generated, never commit)
+mediexplain_chromadb/
+
+# RAG source data (user-provided, not committed — keep the placeholder)
+html/*
+!html/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE & dev tools
+.vscode/
+.idea/
+.claude/
+
+# Outputs
+*.pdf
+*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
