@@ -426,7 +426,7 @@ def run_validator_page() -> None:
     .term-prompt::before  { content: ‘$ ‘; color: #10B981; }
 
     /* Override tab styling for terminal theme */
-    .validator-page .stTabs [data-baseweb="tab"] {
+    .stTabs [data-baseweb="tab"] {
         font-family: ‘Courier New’, monospace !important;
         font-size: 12px !important;
         letter-spacing: 0.5px !important;
@@ -438,7 +438,6 @@ def run_validator_page() -> None:
         font-size: 12px !important;
     }
     </style>
-    <div class="validator-page">
     """, unsafe_allow_html=True)
 
     # Header
