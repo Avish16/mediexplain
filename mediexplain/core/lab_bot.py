@@ -211,7 +211,7 @@ RETURN ONLY THE JSON OBJECT.
     # ------------------------------------------------------------
     # LLM CALL
     # ------------------------------------------------------------
-    response = client.responses.create(
+    response = _client_instance().responses.create(
         model="gpt-4.1",
         input=prompt,
         max_output_tokens=4500,

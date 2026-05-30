@@ -157,7 +157,7 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
     """
 
     # 1) Use Responses API to get structured metadata + image prompts
-    response = client.responses.create(
+    response = _client_instance().responses.create(
         model="gpt-4.1",
         input=prompt,
         max_output_tokens=1800,
@@ -182,7 +182,7 @@ def generate_radiology_studies_llm(age: int, gender: str, diagnosis: dict, timel
             + " Radiology-style grayscale medical image, no color, no text, high contrast, clinical X-ray/CT/MRI aesthetic."
         )
 
-        img_resp = client.images.generate(
+        img_resp = _client_instance().images.generate(
             model="gpt-image-1",
             prompt=full_image_prompt,
             size="1024x1024",

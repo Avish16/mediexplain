@@ -205,7 +205,7 @@ RULES:
     # 3-attempt safety net
     for attempt in range(3):
         try:
-            response = client.responses.create(
+            response = _client_instance().responses.create(
                 model="gpt-4.1",
                 input=prompt,
                 max_output_tokens=3000,

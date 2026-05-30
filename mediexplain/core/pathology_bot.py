@@ -209,7 +209,7 @@ OUTPUT FORMAT:
 
     for attempt in range(3):
         try:
-            response = client.responses.create(
+            response = _client_instance().responses.create(
                 model="gpt-4.1",
                 input=prompt,
                 max_output_tokens=4500,

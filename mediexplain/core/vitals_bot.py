@@ -132,7 +132,7 @@ VERY IMPORTANT:
 Just write a realistic vitals narrative like a hospital chart.
 """
 
-    response = client.responses.create(
+    response = _client_instance().responses.create(
         model="gpt-4.1",
         input=prompt,
         max_output_tokens=2500,
