@@ -7,7 +7,7 @@ google-generativeai>=0.7.0
 
 # Vector Store
 chromadb>=0.5.0
-# Linux/macOS only — ChromaDB sqlite compatibility shim (no Windows wheel)
+# Linux/macOS only - ChromaDB sqlite compatibility shim (no Windows wheel)
 pysqlite3-binary>=0.5.0; sys_platform != "win32"
 
 # NLP / ML
