@@ -12,13 +12,25 @@ except:
 # -------------------------------------------------------------------
 # CLIENT SETUP
 # -------------------------------------------------------------------
-def _client():
-    api_key = os.getenv("OPENAI_API_KEY") or (st.secrets.get("OPENAI_API_KEY") if st else None)
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY not found.")
-    return OpenAI(api_key=api_key)
+# Lazy singleton
+_client_cache = None
 
-client = _client()
+
+def _client():
+    global _client_cache
+    if _client_cache is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key and st is not None:
+            try:
+                api_key = st.secrets.get("OPENAI_API_KEY")
+            except Exception:
+                pass
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY not set. Add it to .streamlit/secrets.toml or set the env var."
+            )
+        _client_cache = OpenAI(api_key=api_key)
+    return _client_cache
 
 
 # -------------------------------------------------------------------
@@ -99,7 +111,7 @@ PATIENT RECORD (truncate for context):
 {record_str}
 """
 
-    response = _client_instance().responses.create(
+    response = _client().responses.create(
         model="gpt-4.1",
         input=prompt,
         max_output_tokens=2000
