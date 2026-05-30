@@ -5,7 +5,7 @@ import os
 import requests
 import textwrap
 
-# Use built-in ReportLab fonts — no external font files needed (cross-platform)
+# Use built-in ReportLab font — no external font files needed (cross-platform)
 FONT_BODY = "Courier"
 FONT_TITLE = "Courier-Bold"
 

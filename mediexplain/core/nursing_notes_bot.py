@@ -13,13 +13,24 @@ except ImportError:
 def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key and st is not None:
-        api_key = st.secrets.get("OPENAI_API_KEY", None)
+        try:
+            api_key = st.secrets.get("OPENAI_API_KEY")
+        except Exception:
+            pass
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY missing in environment or Streamlit secrets.")
+        raise RuntimeError("OPENAI_API_KEY not set. Add it to .streamlit/secrets.toml or set the env var.")
     return OpenAI(api_key=api_key)
 
 
-client = _get_openai_client()
+# Lazy singleton — resolved on first page load, not at import time
+_client = None
+
+
+def _client_instance():
+    global _client
+    if _client is None:
+        _client = _get_openai_client()
+    return _client
 
 
 def _safe_extract_json(text: str) -> dict:
