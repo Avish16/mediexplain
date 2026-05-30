@@ -11,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from styles import inject_global_css
 from app.bots.meds_rag_search import search_meds_knowledge
-from app_synthetic.chat_app import route_to_specialist_bot
+from app_synthetic.router import route_to_specialist_bot
 
 GLOBAL_MED_RAG_VECTORSTORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
 

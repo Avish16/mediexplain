@@ -6,7 +6,6 @@ import os
 import sys
 import time
 import json
-import traceback
 import streamlit as st
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -35,223 +34,132 @@ from core.pdf_generator import generate_pdf
 
 inject_global_css()
 
-# ── Extra page-level styles ──────────────────────────────────────
-st.markdown("""
-<style>
-.generate-btn > button {
-    background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,102,255,0.2)) !important;
-    border: 1px solid rgba(0,212,255,0.5) !important;
-    color: #00D4FF !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    padding: 14px 32px !important;
-    border-radius: 10px !important;
-    width: 100% !important;
-    letter-spacing: 0.5px !important;
-    transition: all 0.3s ease !important;
-}
-.generate-btn > button:hover {
-    background: linear-gradient(135deg, rgba(0,212,255,0.35), rgba(0,102,255,0.35)) !important;
-    border-color: #00D4FF !important;
-    box-shadow: 0 0 30px rgba(0,212,255,0.3), 0 4px 20px rgba(0,212,255,0.15) !important;
-    transform: translateY(-2px) !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ── PIPELINE STEP DEFINITIONS ────────────────────────────────────
 PIPELINE_STEPS = [
-    {"name": "Demographics Bot",     "icon": "👤"},
-    {"name": "Diagnosis Bot",        "icon": "🔬"},
-    {"name": "Timeline Bot",         "icon": "📅"},
-    {"name": "Lab Bot",              "icon": "🧪"},
-    {"name": "Vitals Bot",           "icon": "💓"},
-    {"name": "Radiology Bot",        "icon": "🩻"},
-    {"name": "Procedure Bot",        "icon": "🩹"},
-    {"name": "Pathology Bot",        "icon": "🔭"},
-    {"name": "Medication Bot",       "icon": "💊"},
-    {"name": "Nursing Notes Bot",    "icon": "📋"},
-    {"name": "Clinical Notes Bot",   "icon": "📝"},
-    {"name": "Prescription Bot",     "icon": "📄"},
-    {"name": "Billing Bot",          "icon": "💰"},
-    {"name": "Consolidator Bot",     "icon": "🗂"},
-    {"name": "Safety Labeler",       "icon": "🛡"},
-    {"name": "Consistency Checker",  "icon": "✔"},
-    {"name": "Renderer Bot",         "icon": "🎨"},
-    {"name": "Composer Bot",         "icon": "📖"},
-    {"name": "PDF Generator",        "icon": "📑"},
+    {"name": "Demographics Bot",    "icon": "👤"},
+    {"name": "Diagnosis Bot",       "icon": "🔬"},
+    {"name": "Timeline Bot",        "icon": "📅"},
+    {"name": "Lab Bot",             "icon": "🧪"},
+    {"name": "Vitals Bot",          "icon": "💓"},
+    {"name": "Radiology Bot",       "icon": "🩻"},
+    {"name": "Procedure Bot",       "icon": "🩹"},
+    {"name": "Pathology Bot",       "icon": "🔭"},
+    {"name": "Medication Bot",      "icon": "💊"},
+    {"name": "Nursing Notes Bot",   "icon": "📋"},
+    {"name": "Clinical Notes Bot",  "icon": "📝"},
+    {"name": "Prescription Bot",    "icon": "📄"},
+    {"name": "Billing Bot",         "icon": "💰"},
+    {"name": "Consolidator Bot",    "icon": "🗂"},
+    {"name": "Safety Labeler",      "icon": "🛡"},
+    {"name": "Consistency Checker", "icon": "✔"},
+    {"name": "Renderer Bot",        "icon": "🎨"},
+    {"name": "Composer Bot",        "icon": "📖"},
+    {"name": "PDF Generator",       "icon": "📑"},
 ]
 
-_S = {
-    "pending": {"color": "#334155", "label": "PENDING", "border": "#334155", "text": "#475569"},
-    "running": {"color": "#00D4FF", "label": "RUNNING", "border": "#00D4FF", "text": "#00D4FF"},
-    "done":    {"color": "#10B981", "label": "DONE",    "border": "#10B981", "text": "#10B981"},
-    "error":   {"color": "#EF4444", "label": "ERROR",   "border": "#EF4444", "text": "#EF4444"},
-    "skipped": {"color": "#F59E0B", "label": "SKIP",    "border": "#F59E0B", "text": "#F59E0B"},
-}
+
+# ── NATIVE PIPELINE RENDERER ─────────────────────────────────────
+def _render_pipeline(placeholder, steps, latest_name="", latest_output=None):
+    """Render the pipeline using native Streamlit components only."""
+    done    = sum(1 for s in steps if s["status"] in ("done", "skipped"))
+    running = sum(1 for s in steps if s["status"] == "running")
+    total   = len(steps)
+
+    with placeholder.container():
+        st.markdown(
+            "<p style='color:#00D4FF; font-size:11px; font-weight:600;"
+            " letter-spacing:2px; text-transform:uppercase; margin:0 0 6px;'>"
+            "AI PIPELINE</p>",
+            unsafe_allow_html=True,
+        )
+        progress_val = (done + running * 0.5) / total if total else 0
+        st.progress(min(progress_val, 1.0), text=f"{done}/{total} complete")
+
+        for step in steps:
+            status = step["status"]
+            name   = step["name"]
+            t      = f"`{step['time']:.1f}s`" if step.get("time") else ""
+
+            if status == "done":
+                st.markdown(f"✅ &nbsp; **{name}** &nbsp; {t}", unsafe_allow_html=True)
+            elif status == "running":
+                st.markdown(
+                    f"<span style='color:#00D4FF'>⚡ &nbsp; **{name}** — running...</span>",
+                    unsafe_allow_html=True,
+                )
+            elif status == "error":
+                st.markdown(
+                    f"<span style='color:#EF4444'>❌ &nbsp; **{name}** — FAILED</span>",
+                    unsafe_allow_html=True,
+                )
+            elif status == "skipped":
+                st.markdown(
+                    f"<span style='color:#F59E0B'>⏭ &nbsp; ~~{name}~~ — skipped</span>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f"<span style='color:#475569; font-size:13px;'>○ &nbsp; {name}</span>",
+                    unsafe_allow_html=True,
+                )
+
+        # Output preview for latest completed step
+        if latest_name and latest_output is not None:
+            st.divider()
+            st.caption(f"Latest output: **{latest_name}**")
+            if isinstance(latest_output, str):
+                preview = latest_output
+            else:
+                try:
+                    preview = json.dumps(latest_output, indent=2, ensure_ascii=False)
+                except Exception:
+                    preview = str(latest_output)
+            st.code(preview[:600] + ("..." if len(preview) > 600 else ""), language=None)
 
 
-def _fmt_output(output) -> str:
-    if output is None:
-        return ""
-    if isinstance(output, str):
-        text = output
-    else:
-        try:
-            text = json.dumps(output, indent=2, ensure_ascii=False)
-        except Exception:
-            text = str(output)
-    return text[:800] + ("\n\n[...truncated]" if len(text) > 800 else "")
-
-
-def render_pipeline_html(steps: list, latest_name: str = "", latest_output=None) -> str:
-    rows = []
-    for step in steps:
-        status = step.get("status", "pending")
-        s = _S[status]
-        t = f"{step['time']:.1f}s" if step.get("time") else ""
-        opacity = "0.3" if status == "pending" else "1.0"
-
-        if status == "done":
-            dot_ch = "✓"
-        elif status == "error":
-            dot_ch = "✗"
-        elif status == "running":
-            dot_ch = "⚡"
-        elif status == "skipped":
-            dot_ch = "—"
+def _show_summary(placeholder, total_time, done, total, errors):
+    """Show post-pipeline summary using native Streamlit components."""
+    with placeholder.container():
+        if errors == 0:
+            st.success(f"**Pipeline Complete** — {done}/{total} bots · {total_time:.1f}s total")
         else:
-            dot_ch = step["icon"]
-
-        glow = f"box-shadow:0 0 12px {s['color']}80;" if status == "running" else ""
-        row = f"""
-        <div style="display:flex;align-items:center;gap:10px;padding:5px 0;
-                    opacity:{opacity};transition:all 0.3s ease;">
-          <div style="width:28px;height:28px;border-radius:50%;border:2px solid {s['border']};
-                      background:#0A0F1E;display:flex;align-items:center;justify-content:center;
-                      font-size:11px;flex-shrink:0;color:{s['color']};{glow}font-weight:700;">
-            {dot_ch}
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;color:{'#E2E8F0' if status != 'pending' else '#475569'};
-                        font-family:'Inter',sans-serif;font-weight:500;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-              {step['name']}
-            </div>
-            {f'<div style="font-size:10px;color:{s["text"]};opacity:0.8;">{t}</div>' if t else ''}
-          </div>
-          <span style="font-size:10px;color:{s['color']};background:{s['color']}18;
-                       padding:2px 7px;border-radius:100px;font-weight:600;
-                       letter-spacing:0.5px;flex-shrink:0;white-space:nowrap;">
-            {s['label']}
-          </span>
-        </div>"""
-        rows.append(row)
-
-    preview_html = ""
-    if latest_name:
-        out_text = _fmt_output(latest_output)
-        preview_html = f"""
-        <div style="margin-top:16px;border-top:1px solid rgba(0,212,255,0.1);padding-top:14px;">
-          <div style="font-size:11px;color:#00D4FF;font-weight:600;
-                      letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">
-            Latest: {latest_name}
-          </div>
-          <pre style="font-family:'Courier New',monospace;font-size:10px;color:#64748B;
-                      white-space:pre-wrap;word-break:break-all;margin:0;
-                      max-height:180px;overflow:hidden;line-height:1.5;">{out_text}</pre>
-        </div>"""
-
-    return f"""
-    <style>
-    @keyframes pulse-run {{
-      0%,100% {{ box-shadow: 0 0 6px rgba(0,212,255,0.5); }}
-      50%      {{ box-shadow: 0 0 18px rgba(0,212,255,1), 0 0 32px rgba(0,212,255,0.3); }}
-    }}
-    </style>
-    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(0,212,255,0.12);
-                border-radius:14px;padding:18px 16px;">
-      <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;
-                  color:#00D4FF;text-transform:uppercase;letter-spacing:2px;
-                  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(0,212,255,0.1);">
-        AI Pipeline
-      </div>
-      <div style="position:relative;">
-        <div style="position:absolute;left:13px;top:14px;bottom:14px;width:1px;
-                    background:linear-gradient(to bottom,rgba(0,212,255,0.35),rgba(0,212,255,0.04));"></div>
-        {"".join(rows)}
-      </div>
-      {preview_html}
-    </div>"""
+            st.warning(
+                f"**Pipeline finished with {errors} error(s)** — {done}/{total} bots · {total_time:.1f}s"
+            )
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("Total Time", f"{total_time:.1f}s")
+        with m2:
+            st.metric("Bots Run", f"{done}/{total}")
+        with m3:
+            st.metric("Status", "All Clear" if errors == 0 else f"{errors} Error(s)")
 
 
-def render_summary_card(total_time: float, done: int, total: int, errors: int) -> str:
-    ok = errors == 0
-    status_color = "#10B981" if ok else "#EF4444"
-    status_label = "All Systems Go" if ok else f"{errors} Error(s)"
-    return f"""
-    <div style="background:linear-gradient(135deg,rgba(16,185,129,0.06),rgba(0,212,255,0.04));
-                border:1px solid rgba(16,185,129,0.3);border-radius:16px;
-                padding:28px 32px;text-align:center;margin:20px 0;animation:fadeIn 0.5s ease;">
-      <div style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;
-                  color:#F1F5F9;margin-bottom:6px;">Pipeline Complete</div>
-      <div style="color:#64748B;font-size:14px;margin-bottom:24px;font-family:'Inter',sans-serif;">
-        Full synthetic medical record generated
-      </div>
-      <div style="display:flex;justify-content:center;gap:40px;flex-wrap:wrap;">
-        <div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;
-                      color:#00D4FF;">{total_time:.1f}s</div>
-          <div style="font-size:12px;color:#475569;margin-top:3px;">Total Time</div>
-        </div>
-        <div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;
-                      color:#00D4FF;">{done}/{total}</div>
-          <div style="font-size:12px;color:#475569;margin-top:3px;">Bots Run</div>
-        </div>
-        <div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;
-                      color:{status_color};">{status_label}</div>
-          <div style="font-size:12px;color:#475569;margin-top:3px;">Status</div>
-        </div>
-      </div>
-    </div>"""
-
-
-# ── SESSION STATE INIT ───────────────────────────────────────────
-if "pipeline_steps" not in st.session_state:
-    st.session_state.pipeline_steps = [
+# ── SESSION STATE ─────────────────────────────────────────────────
+for key, default in [
+    ("pipeline_steps", [
         {"name": s["name"], "icon": s["icon"], "status": "pending", "time": None, "output": None}
         for s in PIPELINE_STEPS
-    ]
-if "pipeline_done" not in st.session_state:
-    st.session_state.pipeline_done = False
-if "pipeline_summary" not in st.session_state:
-    st.session_state.pipeline_summary = None
-if "output_pdf_path" not in st.session_state:
-    st.session_state.output_pdf_path = "synthetic_patient_report.pdf"
+    ]),
+    ("pipeline_done", False),
+    ("pipeline_summary", None),
+    ("output_pdf_path", "synthetic_patient_report.pdf"),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-# ── SIDEBAR ──────────────────────────────────────────────────────
-st.sidebar.markdown("""
-<div style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;
-            color:#00D4FF;text-transform:uppercase;letter-spacing:1.5px;
-            padding:8px 0 12px;border-bottom:1px solid rgba(0,212,255,0.1);margin-bottom:16px;">
-  Patient Configuration
-</div>
-""", unsafe_allow_html=True)
-
-age = st.sidebar.number_input("Patient Age", min_value=1, max_value=110, value=45)
-gender = st.sidebar.selectbox("Gender", ["Male", "Female", "Other"], index=0)
+# ── SIDEBAR ───────────────────────────────────────────────────────
+st.sidebar.markdown(
+    "<p style='color:#00D4FF; font-size:12px; font-weight:600; letter-spacing:2px;"
+    " text-transform:uppercase; border-bottom:1px solid rgba(0,212,255,0.1);"
+    " padding-bottom:8px; margin-bottom:12px;'>Patient Configuration</p>",
+    unsafe_allow_html=True,
+)
+age       = st.sidebar.number_input("Patient Age", min_value=1, max_value=110, value=45)
+gender    = st.sidebar.selectbox("Gender", ["Male", "Female", "Other"], index=0)
 logo_path = st.sidebar.text_input("Hospital Logo Path (optional)", value="assets/hospital_logo.png")
 
-st.sidebar.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-st.sidebar.markdown("""
-<div style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;
-            color:#64748B;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;">
-  Debug Tools
-</div>
-""", unsafe_allow_html=True)
-
+st.sidebar.markdown("---")
 debug_mode = st.sidebar.checkbox("Single-bot debug mode")
 
 if debug_mode:
@@ -295,52 +203,45 @@ if debug_mode:
             st.error(f"Bot failed: {e}")
     st.stop()
 
-# ── PAGE HEADER ──────────────────────────────────────────────────
-st.markdown("""
-<div style="padding:32px 0 24px; animation:fadeIn 0.5s ease;">
-  <div style="display:inline-block;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);
-              border-radius:100px;padding:4px 14px;font-size:11px;color:#00D4FF;
-              font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;">
-    19-Bot Pipeline
-  </div>
-  <h1 style="font-family:'Space Grotesk',sans-serif;font-size:36px;font-weight:700;
-             color:#F1F5F9;margin:0 0 8px;">Synthetic Patient Generator</h1>
-  <p style="font-size:15px;color:#64748B;margin:0;font-family:'Inter',sans-serif;">
-    Generate a complete, clinically realistic medical record from demographics through discharge PDF.
-  </p>
-</div>
-""", unsafe_allow_html=True)
+# ── PAGE HEADER ───────────────────────────────────────────────────
+st.markdown(
+    "<p style='color:#00D4FF; font-size:11px; font-weight:600; letter-spacing:2px;"
+    " text-transform:uppercase; margin-top:16px;'>19-BOT PIPELINE</p>",
+    unsafe_allow_html=True,
+)
+st.title("Synthetic Patient Generator")
+st.caption(
+    "Generate a complete, clinically realistic medical record — "
+    "demographics through discharge PDF."
+)
 
-# ── GENERATE BUTTON ──────────────────────────────────────────────
+# ── GENERATE BUTTON ───────────────────────────────────────────────
 gen_col, _ = st.columns([3, 7])
 with gen_col:
-    st.markdown('<div class="generate-btn">', unsafe_allow_html=True)
-    generate_clicked = st.button("⚡  Generate Full Synthetic Case", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    generate_clicked = st.button(
+        "⚡  Generate Full Synthetic Case",
+        type="primary",
+        use_container_width=True,
+    )
 
-# ── PIPELINE LAYOUT ──────────────────────────────────────────────
+# ── PIPELINE LAYOUT ───────────────────────────────────────────────
 left_col, right_col = st.columns([4, 6], gap="large")
 
 with left_col:
     pipeline_placeholder = st.empty()
 
 with right_col:
-    status_placeholder = st.empty()
+    status_placeholder  = st.empty()
     summary_placeholder = st.empty()
     download_placeholder = st.empty()
 
-# Render existing state (persistent after run)
+# Render current saved state on every page load
 steps = st.session_state.pipeline_steps
-pipeline_placeholder.markdown(
-    render_pipeline_html(steps), unsafe_allow_html=True
-)
+_render_pipeline(pipeline_placeholder, steps)
 
 if st.session_state.pipeline_done and st.session_state.pipeline_summary:
     s = st.session_state.pipeline_summary
-    summary_placeholder.markdown(
-        render_summary_card(s["total_time"], s["done"], s["total"], s["errors"]),
-        unsafe_allow_html=True,
-    )
+    _show_summary(summary_placeholder, s["total_time"], s["done"], s["total"], s["errors"])
     if os.path.exists(st.session_state.output_pdf_path):
         with open(st.session_state.output_pdf_path, "rb") as f:
             download_placeholder.download_button(
@@ -351,10 +252,9 @@ if st.session_state.pipeline_done and st.session_state.pipeline_summary:
                 use_container_width=True,
             )
 
-# ── PIPELINE EXECUTION ───────────────────────────────────────────
+# ── PIPELINE EXECUTION ────────────────────────────────────────────
 if generate_clicked:
-    # Reset state
-    st.session_state.pipeline_done = False
+    st.session_state.pipeline_done    = False
     st.session_state.pipeline_summary = None
     steps = [
         {"name": s["name"], "icon": s["icon"], "status": "pending", "time": None, "output": None}
@@ -363,23 +263,19 @@ if generate_clicked:
     st.session_state.pipeline_steps = steps
 
     pipeline_start = time.time()
-    # Mutable container avoids nonlocal in nested functions (nonlocal requires
-    # an enclosing *function* scope; plain if-block scope isn't sufficient).
+    # Mutable container avoids nonlocal (plain if-block is not a function scope)
     ctx = {"errors": 0, "latest_name": "", "latest_output": None}
 
     def _set(idx, status, result=None, elapsed=None):
         steps[idx]["status"] = status
-        steps[idx]["time"] = elapsed
+        steps[idx]["time"]   = elapsed
         steps[idx]["output"] = result
 
     def _render(idx=None):
         if idx is not None and steps[idx].get("output") is not None:
-            ctx["latest_name"] = steps[idx]["name"]
+            ctx["latest_name"]   = steps[idx]["name"]
             ctx["latest_output"] = steps[idx]["output"]
-        pipeline_placeholder.markdown(
-            render_pipeline_html(steps, ctx["latest_name"], ctx["latest_output"]),
-            unsafe_allow_html=True,
-        )
+        _render_pipeline(pipeline_placeholder, steps, ctx["latest_name"], ctx["latest_output"])
 
     def run(idx, fn, *args):
         _set(idx, "running")
@@ -412,11 +308,14 @@ if generate_clicked:
         if isinstance(timeline, str):
             import re
             from datetime import datetime
-            summary = timeline.split("TIMELINE SUMMARY:")[1].split("TIMELINE TABLE:")[0].strip() \
-                if "TIMELINE SUMMARY:" in timeline else timeline[:200]
+            summary = (timeline.split("TIMELINE SUMMARY:")[1].split("TIMELINE TABLE:")[0].strip()
+                       if "TIMELINE SUMMARY:" in timeline else timeline[:200])
             blocks = re.split(r"\n(?=\d+\.)", timeline)
-            events = [{"date": datetime.now().strftime("%Y-%m-%d"), "event_type": "Event",
-                       "description": b.split("\n")[0].strip()} for b in blocks if b.strip()]
+            events = [
+                {"date": datetime.now().strftime("%Y-%m-%d"), "event_type": "Event",
+                 "description": b.split("\n")[0].strip()}
+                for b in blocks if b.strip()
+            ]
             timeline = {"timeline_summary": summary, "timeline_table": events}
 
         # 3 — Labs
@@ -428,7 +327,7 @@ if generate_clicked:
         # 5 — Radiology (skipped)
         _set(5, "skipped", {}, 0.0)
         _render()
-        radiology = {}
+        radiology            = {}
         radiology_image_urls = []
         status_placeholder.info("Radiology Bot is paused — imaging generation skipped.")
 
@@ -442,16 +341,20 @@ if generate_clicked:
         medications = run(8, generate_medication_plan_llm, age, gender, diagnosis, timeline, labs, vitals)
 
         # 9 — Nursing Notes
-        nursing_notes = run(9, generate_nursing_notes_llm, age, gender, demographics, diagnosis, vitals, labs, timeline)
+        nursing_notes = run(9, generate_nursing_notes_llm,
+                            age, gender, demographics, diagnosis, vitals, labs, timeline)
 
         # 10 — Clinical Notes
-        clinical_notes = run(10, generate_clinical_notes_llm, age, gender, demographics, diagnosis, timeline, labs, vitals, radiology)
+        clinical_notes = run(10, generate_clinical_notes_llm,
+                             age, gender, demographics, diagnosis, timeline, labs, vitals, radiology)
 
         # 11 — Prescriptions
-        prescriptions = run(11, generate_prescriptions_llm, age, gender, diagnosis, medications, vitals, labs)
+        prescriptions = run(11, generate_prescriptions_llm,
+                            age, gender, diagnosis, medications, vitals, labs)
 
         # 12 — Billing
-        billing = run(12, generate_billing_summary_llm, age, gender, demographics, diagnosis, procedures, labs, radiology, medications)
+        billing = run(12, generate_billing_summary_llm,
+                      age, gender, demographics, diagnosis, procedures, labs, radiology, medications)
 
         # 13 — Consolidator
         patient_record = run(13, consolidate_patient_record,
@@ -474,7 +377,7 @@ if generate_clicked:
         # 18 — PDF
         _set(18, "running")
         _render()
-        t0 = time.time()
+        t0       = time.time()
         logo_arg = logo_path if logo_path and os.path.exists(logo_path) else None
         generate_pdf(
             report_text=final_text,
@@ -488,18 +391,18 @@ if generate_clicked:
         # ── Summary ──────────────────────────────────────────────
         total_time = time.time() - pipeline_start
         done_count = sum(1 for s in steps if s["status"] == "done")
-        st.session_state.pipeline_done = True
+        st.session_state.pipeline_done    = True
         st.session_state.pipeline_summary = {
-            "total_time": total_time, "done": done_count,
-            "total": len(steps), "errors": ctx["errors"],
+            "total_time": total_time,
+            "done":       done_count,
+            "total":      len(steps),
+            "errors":     ctx["errors"],
         }
         st.session_state.pipeline_steps = steps
 
         status_placeholder.empty()
-        summary_placeholder.markdown(
-            render_summary_card(total_time, done_count, len(steps), ctx["errors"]),
-            unsafe_allow_html=True,
-        )
+        _show_summary(summary_placeholder, total_time, done_count, len(steps), ctx["errors"])
+
         if os.path.exists(st.session_state.output_pdf_path):
             with open(st.session_state.output_pdf_path, "rb") as f:
                 download_placeholder.download_button(
@@ -511,8 +414,6 @@ if generate_clicked:
                 )
 
     except Exception as e:
-        total_time = time.time() - pipeline_start
-        done_count = sum(1 for s in steps if s["status"] == "done")
         st.session_state.pipeline_steps = steps
         status_placeholder.error(f"Pipeline aborted: {e}")
         print("[FATAL] Pipeline aborted:", e)

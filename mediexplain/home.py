@@ -1,5 +1,6 @@
 """
 MediExplain Home / Landing Page
+Uses native Streamlit layout with simple single-line HTML only.
 """
 import sys
 import os
@@ -10,250 +11,149 @@ from styles import inject_global_css
 
 inject_global_css()
 
-# ── HERO ────────────────────────────────────────────────────────
-st.markdown("""
-<div style="text-align:center; padding: 60px 20px 40px; animation: fadeIn 0.6s ease;">
+# ── HERO ─────────────────────────────────────────────────────────
+st.markdown(
+    "<p style='text-align:center; color:#00D4FF; font-size:11px; letter-spacing:3px;"
+    " font-weight:600; text-transform:uppercase; margin-bottom:4px;'>"
+    "CLINICAL AI PLATFORM</p>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<h1 style='text-align:center; font-family:Space Grotesk,sans-serif;"
+    " background:linear-gradient(135deg,#F1F5F9 0%,#00D4FF 60%,#0066FF 100%);"
+    " -webkit-background-clip:text; -webkit-text-fill-color:transparent;"
+    " background-clip:text; font-size:clamp(36px,5vw,64px); margin:8px 0;'>"
+    "MediExplain</h1>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p style='text-align:center; color:#94A3B8; font-size:18px; margin:0 0 8px;'>"
+    "AI-Powered Medical Intelligence Platform</p>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p style='text-align:center; color:#475569; font-size:13px;'>"
+    "19 Specialized AI Bots &nbsp;·&nbsp; RAG-Enhanced Retrieval &nbsp;·&nbsp;"
+    " Clinical-Grade PDF &nbsp;·&nbsp; Real-Time Safety Labeling</p>",
+    unsafe_allow_html=True,
+)
 
-  <div style="display:inline-block; background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2);
-              border-radius:100px; padding:6px 18px; font-size:12px; color:#00D4FF;
-              font-family:'Inter',sans-serif; letter-spacing:2px; font-weight:600;
-              text-transform:uppercase; margin-bottom:24px;">
-    Clinical AI Platform
-  </div>
+st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
-  <h1 style="font-family:'Space Grotesk',sans-serif; font-size:clamp(40px,6vw,72px);
-             font-weight:700; margin:0 0 16px;
-             background:linear-gradient(135deg,#F1F5F9 0%,#00D4FF 50%,#0066FF 100%);
-             -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-             background-clip:text; line-height:1.1;">
-    MediExplain
-  </h1>
+# ── FEATURE CARDS ─────────────────────────────────────────────────
+c1, c2, c3 = st.columns(3, gap="medium")
 
-  <p style="font-family:'Inter',sans-serif; font-size:clamp(16px,2.5vw,22px);
-            color:#94A3B8; margin:0 auto 40px; max-width:600px; line-height:1.6; font-weight:300;">
-    AI-Powered Medical Intelligence Platform
-  </p>
+CARD_STYLE = (
+    "border:1px solid rgba(0,212,255,0.18); border-radius:14px;"
+    " background:rgba(255,255,255,0.025); padding:24px 20px;"
+)
 
-  <div style="display:flex; justify-content:center; gap:32px; flex-wrap:wrap;
-              font-family:'Inter',sans-serif; font-size:14px; color:#64748B; margin-bottom:52px;">
-    <span style="display:flex;align-items:center;gap:6px;">
-      <span style="color:#00D4FF;">●</span> 19 Specialized AI Bots
-    </span>
-    <span style="display:flex;align-items:center;gap:6px;">
-      <span style="color:#00D4FF;">●</span> RAG-Enhanced Retrieval
-    </span>
-    <span style="display:flex;align-items:center;gap:6px;">
-      <span style="color:#00D4FF;">●</span> Clinical-Grade PDF Output
-    </span>
-    <span style="display:flex;align-items:center;gap:6px;">
-      <span style="color:#00D4FF;">●</span> Real-Time Safety Labeling
-    </span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+with c1:
+    st.markdown(
+        f"<div style='{CARD_STYLE}'>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("### 🧬 Synthetic Generator")
+    st.markdown(
+        "Generate complete, clinically realistic patient records end-to-end — "
+        "demographics, labs, vitals, clinical notes, prescriptions, billing, and a full PDF."
+    )
+    st.markdown(
+        "<span style='color:#00D4FF;font-size:12px;'>19 Bots</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>PDF Export</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>Safety Audit</span>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# ── FEATURE CARDS ───────────────────────────────────────────────
-st.markdown("""
-<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
-            gap:20px; padding:0 4px 48px; animation:fadeIn 0.8s ease;">
+with c2:
+    st.markdown(
+        f"<div style='{CARD_STYLE}'>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("### 💬 Medical Chatbot")
+    st.markdown(
+        "Upload any medical report PDF and ask questions in plain language. "
+        "Specialist bots cover labs, medications, care plans, and emotional support — "
+        "powered by RAG retrieval and long-term memory."
+    )
+    st.markdown(
+        "<span style='color:#6366F1;font-size:12px;'>RAG-Enhanced</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>7 Specialist Bots</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>Memory</span>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-  <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
-              border-radius:16px; padding:28px; transition:all 0.3s ease;
-              position:relative; overflow:hidden;">
-    <div style="position:absolute;top:0;right:0;width:120px;height:120px;
-                background:radial-gradient(circle,rgba(0,212,255,0.06),transparent 70%);"></div>
+with c3:
+    st.markdown(
+        f"<div style='{CARD_STYLE}'>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("### 🔬 Validator Console")
+    st.markdown(
+        "Developer-facing diagnostics console for inspecting retrieval quality, "
+        "routing decisions, safety guardrails, bot outputs, and Q&A history. "
+        "Full pipeline introspection in one view."
+    )
+    st.markdown(
+        "<span style='color:#10B981;font-size:12px;'>Diagnostics</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>RAG Audit</span>"
+        " &nbsp; <span style='color:#64748B;font-size:12px;'>Safety Trace</span>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    <div style="width:48px;height:48px;border-radius:12px;
-                background:linear-gradient(135deg,rgba(0,212,255,0.15),rgba(0,102,255,0.1));
-                border:1px solid rgba(0,212,255,0.25);
-                display:flex;align-items:center;justify-content:center;
-                font-size:22px;margin-bottom:16px;">🧬</div>
+st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;
-                color:#F1F5F9;margin-bottom:8px;">Synthetic Patient Generator</div>
+# ── ARCHITECTURE ──────────────────────────────────────────────────
+st.markdown(
+    "<div style='border:1px solid rgba(0,212,255,0.12); border-radius:12px;"
+    " background:rgba(255,255,255,0.02); padding:20px 24px;'>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p style='color:#00D4FF; font-size:11px; font-weight:600; letter-spacing:2px;"
+    " text-transform:uppercase; margin:0 0 10px;'>PLATFORM ARCHITECTURE</p>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "**PDF / Input** &nbsp;→&nbsp; **Router Bot** &nbsp;→&nbsp; **RAG Retrieval**"
+    " &nbsp;→&nbsp; **Specialist Bot** &nbsp;→&nbsp; **Safety Check** &nbsp;→&nbsp; **Response**"
+)
+st.markdown(
+    "<p style='color:#475569; font-size:12px; margin:4px 0 0;'>"
+    "Intent detection · Vector search · Domain expertise · Clinical guardrails · Plain-language output</p>",
+    unsafe_allow_html=True,
+)
+st.markdown("</div>", unsafe_allow_html=True)
 
-    <p style="font-family:'Inter',sans-serif;font-size:14px;color:#64748B;
-              line-height:1.6;margin:0 0 16px;">
-      Generate complete, clinically realistic patient records end-to-end using
-      a 19-bot AI pipeline — demographics, labs, vitals, clinical notes, prescriptions,
-      billing, safety labels, and a full PDF report.
-    </p>
+st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
 
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-      <span style="font-size:11px;color:#00D4FF;background:rgba(0,212,255,0.08);
-                   padding:3px 10px;border-radius:100px;font-weight:500;">19 Bots</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">PDF Export</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">Safety Audit</span>
-    </div>
-  </div>
+# ── QUICK START ───────────────────────────────────────────────────
+st.markdown("### Quick Start")
 
-  <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
-              border-radius:16px; padding:28px; transition:all 0.3s ease;
-              position:relative; overflow:hidden;">
-    <div style="position:absolute;top:0;right:0;width:120px;height:120px;
-                background:radial-gradient(circle,rgba(0,102,255,0.07),transparent 70%);"></div>
+q1, q2, q3 = st.columns(3, gap="medium")
+with q1:
+    with st.container(border=True):
+        st.markdown("**1 · Set API Key**")
+        st.caption("Add `OPENAI_API_KEY` to `.streamlit/secrets.toml`")
+with q2:
+    with st.container(border=True):
+        st.markdown("**2 · Choose a Module**")
+        st.caption("Select Synthetic Generator, Chatbot, or Validator from the sidebar")
+with q3:
+    with st.container(border=True):
+        st.markdown("**3 · Generate or Chat**")
+        st.caption("Run the full pipeline or upload a medical PDF and start asking questions")
 
-    <div style="width:48px;height:48px;border-radius:12px;
-                background:linear-gradient(135deg,rgba(0,102,255,0.15),rgba(0,212,255,0.1));
-                border:1px solid rgba(0,102,255,0.25);
-                display:flex;align-items:center;justify-content:center;
-                font-size:22px;margin-bottom:16px;">💬</div>
+st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;
-                color:#F1F5F9;margin-bottom:8px;">MediExplain Chatbot</div>
-
-    <p style="font-family:'Inter',sans-serif;font-size:14px;color:#64748B;
-              line-height:1.6;margin:0 0 16px;">
-      Upload any medical report PDF and ask questions in plain language.
-      Specialist bots handle labs, medications, care plans, diagnoses, and
-      emotional support — powered by RAG retrieval and long-term memory.
-    </p>
-
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-      <span style="font-size:11px;color:#6366F1;background:rgba(99,102,241,0.1);
-                   padding:3px 10px;border-radius:100px;font-weight:500;">RAG-Enhanced</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">7 Specialist Bots</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">Memory</span>
-    </div>
-  </div>
-
-  <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
-              border-radius:16px; padding:28px; transition:all 0.3s ease;
-              position:relative; overflow:hidden;">
-    <div style="position:absolute;top:0;right:0;width:120px;height:120px;
-                background:radial-gradient(circle,rgba(16,185,129,0.06),transparent 70%);"></div>
-
-    <div style="width:48px;height:48px;border-radius:12px;
-                background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(0,212,255,0.1));
-                border:1px solid rgba(16,185,129,0.25);
-                display:flex;align-items:center;justify-content:center;
-                font-size:22px;margin-bottom:16px;">🔬</div>
-
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:600;
-                color:#F1F5F9;margin-bottom:8px;">Validator Console</div>
-
-    <p style="font-family:'Inter',sans-serif;font-size:14px;color:#64748B;
-              line-height:1.6;margin:0 0 16px;">
-      Developer-facing diagnostics console for inspecting retrieval quality,
-      routing decisions, safety guardrails, bot outputs, and Q&A history.
-      Full pipeline introspection in a single view.
-    </p>
-
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-      <span style="font-size:11px;color:#10B981;background:rgba(16,185,129,0.1);
-                   padding:3px 10px;border-radius:100px;font-weight:500;">Diagnostics</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">RAG Audit</span>
-      <span style="font-size:11px;color:#94A3B8;background:rgba(255,255,255,0.05);
-                   padding:3px 10px;border-radius:100px;">Safety Trace</span>
-    </div>
-  </div>
-
-</div>
-""", unsafe_allow_html=True)
-
-# ── ARCHITECTURE SECTION ────────────────────────────────────────
-st.markdown("""
-<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(0,212,255,0.1);
-            border-radius:16px; padding:28px 32px; margin-bottom:32px; animation:fadeIn 1s ease;">
-  <div style="font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
-              color:#00D4FF; text-transform:uppercase; letter-spacing:2px; margin-bottom:16px;">
-    Platform Architecture
-  </div>
-  <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0;
-              font-family:'Inter',sans-serif; font-size:12px;">
-
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">PDF / Input</div>
-      <div style="color:#475569; font-size:11px;">User data</div>
-    </div>
-    <div style="color:#00D4FF; font-size:18px; padding:0 4px;">→</div>
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">Router Bot</div>
-      <div style="color:#475569; font-size:11px;">Intent detection</div>
-    </div>
-    <div style="color:#00D4FF; font-size:18px; padding:0 4px;">→</div>
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">RAG Retrieval</div>
-      <div style="color:#475569; font-size:11px;">Vector search</div>
-    </div>
-    <div style="color:#00D4FF; font-size:18px; padding:0 4px;">→</div>
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">Specialist Bot</div>
-      <div style="color:#475569; font-size:11px;">Domain expert</div>
-    </div>
-    <div style="color:#00D4FF; font-size:18px; padding:0 4px;">→</div>
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">Safety Check</div>
-      <div style="color:#475569; font-size:11px;">Guardrails</div>
-    </div>
-    <div style="color:#00D4FF; font-size:18px; padding:0 4px;">→</div>
-    <div style="text-align:center; padding:10px 16px;">
-      <div style="color:#F1F5F9; font-weight:500; margin-bottom:2px;">Response</div>
-      <div style="color:#475569; font-size:11px;">Plain language</div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ── QUICK-START ─────────────────────────────────────────────────
-st.markdown("""
-<div style="margin-bottom:32px;">
-  <div style="font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:600;
-              color:#F1F5F9; margin-bottom:16px;">Quick Start</div>
-  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;">
-    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(0,212,255,0.1);
-                border-radius:12px; padding:16px; display:flex; gap:14px; align-items:flex-start;">
-      <div style="background:rgba(0,212,255,0.1); border-radius:8px; width:32px; height:32px;
-                  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">1</div>
-      <div>
-        <div style="color:#E2E8F0;font-size:13px;font-weight:500;margin-bottom:3px;">Set API Key</div>
-        <div style="color:#64748B;font-size:12px;">Add OPENAI_API_KEY to .streamlit/secrets.toml</div>
-      </div>
-    </div>
-    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(0,212,255,0.1);
-                border-radius:12px; padding:16px; display:flex; gap:14px; align-items:flex-start;">
-      <div style="background:rgba(0,212,255,0.1); border-radius:8px; width:32px; height:32px;
-                  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">2</div>
-      <div>
-        <div style="color:#E2E8F0;font-size:13px;font-weight:500;margin-bottom:3px;">Choose a Module</div>
-        <div style="color:#64748B;font-size:12px;">Select from the sidebar navigation</div>
-      </div>
-    </div>
-    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(0,212,255,0.1);
-                border-radius:12px; padding:16px; display:flex; gap:14px; align-items:flex-start;">
-      <div style="background:rgba(0,212,255,0.1); border-radius:8px; width:32px; height:32px;
-                  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;">3</div>
-      <div>
-        <div style="color:#E2E8F0;font-size:13px;font-weight:500;margin-bottom:3px;">Generate or Chat</div>
-        <div style="color:#64748B;font-size:12px;">Run the pipeline or upload a medical PDF</div>
-      </div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ── DISCLAIMER ──────────────────────────────────────────────────
-st.markdown("""
-<div style="background:rgba(245,158,11,0.05); border:1px solid rgba(245,158,11,0.2);
-            border-radius:12px; padding:16px 20px; margin-top:8px;
-            display:flex; gap:12px; align-items:flex-start;">
-  <span style="font-size:18px; flex-shrink:0; margin-top:1px;">⚠️</span>
-  <div style="font-family:'Inter',sans-serif;">
-    <div style="color:#F59E0B; font-size:13px; font-weight:600; margin-bottom:4px;">
-      Research & Educational Use Only
-    </div>
-    <div style="color:#94A3B8; font-size:12px; line-height:1.6;">
-      MediExplain generates and explains <strong style="color:#E2E8F0;">synthetic, fictional</strong>
-      medical records for research and educational purposes only. All patient data is
-      AI-generated and entirely fictional. This platform is <strong style="color:#E2E8F0;">not a substitute
-      for professional medical advice</strong>, diagnosis, or treatment. Never make clinical decisions
-      based on AI-generated content. Always consult a qualified healthcare professional.
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+# ── DISCLAIMER ────────────────────────────────────────────────────
+st.warning(
+    "**Research & Educational Use Only** — MediExplain generates **synthetic, fictional** "
+    "medical records for research and educational purposes only. All patient data is entirely "
+    "AI-generated. This platform is **not a substitute for professional medical advice**, "
+    "diagnosis, or treatment. Always consult a qualified healthcare professional.",
+    icon="⚠️",
+)
