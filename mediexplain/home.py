@@ -57,7 +57,6 @@ st.markdown("""
 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
             gap:20px; padding:0 4px 48px; animation:fadeIn 0.8s ease;">
 
-  <!-- Card 1: Synthetic Generator -->
   <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
               border-radius:16px; padding:28px; transition:all 0.3s ease;
               position:relative; overflow:hidden;">
@@ -90,7 +89,6 @@ st.markdown("""
     </div>
   </div>
 
-  <!-- Card 2: Medical Chatbot -->
   <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
               border-radius:16px; padding:28px; transition:all 0.3s ease;
               position:relative; overflow:hidden;">
@@ -123,7 +121,6 @@ st.markdown("""
     </div>
   </div>
 
-  <!-- Card 3: Validator Console -->
   <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(0,212,255,0.15);
               border-radius:16px; padding:28px; transition:all 0.3s ease;
               position:relative; overflow:hidden;">

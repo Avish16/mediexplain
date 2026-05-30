@@ -363,9 +363,9 @@ if generate_clicked:
     st.session_state.pipeline_steps = steps
 
     pipeline_start = time.time()
-    errors = 0
-    latest_name = ""
-    latest_output = None
+    # Mutable container avoids nonlocal in nested functions (nonlocal requires
+    # an enclosing *function* scope; plain if-block scope isn't sufficient).
+    ctx = {"errors": 0, "latest_name": "", "latest_output": None}
 
     def _set(idx, status, result=None, elapsed=None):
         steps[idx]["status"] = status
@@ -373,17 +373,15 @@ if generate_clicked:
         steps[idx]["output"] = result
 
     def _render(idx=None):
-        nonlocal latest_name, latest_output
         if idx is not None and steps[idx].get("output") is not None:
-            latest_name = steps[idx]["name"]
-            latest_output = steps[idx]["output"]
+            ctx["latest_name"] = steps[idx]["name"]
+            ctx["latest_output"] = steps[idx]["output"]
         pipeline_placeholder.markdown(
-            render_pipeline_html(steps, latest_name, latest_output),
+            render_pipeline_html(steps, ctx["latest_name"], ctx["latest_output"]),
             unsafe_allow_html=True,
         )
 
     def run(idx, fn, *args):
-        nonlocal errors
         _set(idx, "running")
         _render()
         t0 = time.time()
@@ -395,7 +393,7 @@ if generate_clicked:
         except Exception as e:
             _set(idx, "error", None, time.time() - t0)
             _render()
-            errors += 1
+            ctx["errors"] += 1
             status_placeholder.error(f"**{steps[idx]['name']} failed:** {e}")
             print(f"[ERROR] {steps[idx]['name']}:", e)
             raise
@@ -493,13 +491,13 @@ if generate_clicked:
         st.session_state.pipeline_done = True
         st.session_state.pipeline_summary = {
             "total_time": total_time, "done": done_count,
-            "total": len(steps), "errors": errors,
+            "total": len(steps), "errors": ctx["errors"],
         }
         st.session_state.pipeline_steps = steps
 
         status_placeholder.empty()
         summary_placeholder.markdown(
-            render_summary_card(total_time, done_count, len(steps), errors),
+            render_summary_card(total_time, done_count, len(steps), ctx["errors"]),
             unsafe_allow_html=True,
         )
         if os.path.exists(st.session_state.output_pdf_path):
