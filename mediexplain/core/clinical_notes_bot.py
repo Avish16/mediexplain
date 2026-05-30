@@ -39,60 +39,105 @@ def _client_instance():
 # ----------------------------------------------------
 # ROBUST JSON EXTRACTOR (Clinical Notes Bot)
 # ----------------------------------------------------
+def _close_truncated_json(text: str) -> str:
+    """
+    Close any unclosed { [ brackets left by a truncated response.
+    Walks the string tracking string/escape state so brackets inside
+    string values are ignored.
+    """
+    open_stack = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 2          # skip escaped character
+                continue
+            if c == '"':
+                in_string = False
+        else:
+            if c == '"':
+                in_string = True
+            elif c == "{":
+                open_stack.append("}")
+            elif c == "[":
+                open_stack.append("]")
+            elif c in "}]":
+                if open_stack and open_stack[-1] == c:
+                    open_stack.pop()
+        i += 1
+    # Strip trailing comma/whitespace then close open structures
+    repaired = text.rstrip().rstrip(",").rstrip()
+    repaired += "".join(reversed(open_stack))
+    return repaired
+
+
 def _safe_extract_json(text: str) -> dict:
     """
-    Extremely defensive JSON extractor for Clinical Notes Bot.
-    Handles:
-    - markdown fences
-    - control chars
-    - illegal backslash escapes
-    - trailing commas
-    - extra whitespace / noise
+    Defensive JSON extractor that handles truncated responses, markdown
+    fences, control chars, illegal escapes, and trailing commas.
+    On unrecoverable failure returns a partial-result dict instead of
+    raising, so the pipeline can continue with degraded data.
     """
-
     if not text:
-        raise ValueError("Clinical Notes Bot: Empty model output.")
+        return {"_parse_error": "Clinical Notes Bot: empty model output"}
 
-    # Strip markdown fences if any
+    # Strip markdown fences
     text = text.replace("```json", "").replace("```", "").strip()
 
-    # Remove invisible control characters
-    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    # Remove invisible control characters (keep \n for now)
+    text = re.sub(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]", " ", text)
 
-    # Flatten newlines
-    text = text.replace("\n", " ")
-
-    # Remove illegal escapes like \q, \s, \3, etc.
+    # Remove illegal JSON escape sequences like \q \s \3
     text = re.sub(r'\\(?!["\\/bfnrtu])', "", text)
 
-    # Find first JSON object
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError(
-            "Clinical Notes Bot: No JSON object found.\n"
-            f"RAW START:\n{text[:1500]}\n..."
-        )
+    # Find the first JSON object boundary
+    start = text.find("{")
+    if start == -1:
+        return {"_parse_error": "Clinical Notes Bot: no JSON object found",
+                "_raw_preview": text[:500]}
 
-    json_text = match.group(0)
+    json_text = text[start:]
 
-    # Fix double braces
+    # Fix double braces and trailing commas
     json_text = json_text.replace("{{", "{").replace("}}", "}")
-
-    # Remove trailing commas before } or ]
     json_text = re.sub(r",\s*(\})", r"\1", json_text)
     json_text = re.sub(r",\s*(\])", r"\1", json_text)
 
-    # Collapse extra whitespace
-    json_text = re.sub(r"\s+", " ", json_text)
-
+    # Attempt 1: parse as-is
     try:
         return json.loads(json_text)
-    except Exception as e:
-        raise ValueError(
-            f"\n❌ Clinical Notes Bot: JSON parse failed: {e}\n"
-            f"--------- RAW JSON START ---------\n{json_text[:4000]}\n"
-            f"--------- RAW JSON END -----------"
-        )
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: repair truncation then parse
+    try:
+        repaired = _close_truncated_json(json_text)
+        result = json.loads(repaired)
+        result["_truncated"] = True     # flag so callers know data is partial
+        return result
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 3: extract whatever top-level keys parsed before the break
+    partial: dict = {}
+    # Pull out any "key": "string value" pairs we can find
+    for m in re.finditer(r'"(\w+)"\s*:\s*"([^"]{0,2000})"', json_text):
+        partial[m.group(1)] = m.group(2)
+
+    if partial:
+        partial["_truncated"] = True
+        partial["_parse_error"] = "JSON was truncated; only string fields recovered"
+        return partial
+
+    # Final fallback: return a safe shell so the pipeline does not crash
+    print("[Clinical Notes Bot] [FAIL] All JSON recovery attempts failed. Returning empty shell.")
+    return {
+        "_truncated": True,
+        "_parse_error": "Clinical Notes Bot: JSON unrecoverable",
+        "_raw_preview": json_text[:500],
+    }
 
 
 # ----------------------------------------------------
@@ -281,15 +326,15 @@ RULES:
             response = _client_instance().responses.create(
                 model="gpt-4.1",
                 input=prompt,
-                max_output_tokens=2000,
+                max_output_tokens=8000,
             )
             raw = (response.output_text or "").strip()
             return _safe_extract_json(raw)
         except Exception as e:
-            print(f"[Clinical Notes Bot] Attempt {attempt+1} failed:", e)
+            print(f"[Clinical Notes Bot] Attempt {attempt+1} [FAIL]:", e)
             last_error = e
             continue
 
-    # FINAL FALLBACK:
-    print("[Clinical Bot WARNING] JSON parse failed, returning raw output:", last_error)
-    return raw
+    # FINAL FALLBACK: _safe_extract_json already returns a dict, never raises
+    print("[Clinical Notes Bot] [WARN] All attempts exhausted:", last_error)
+    return _safe_extract_json(raw if "raw" in dir() else "")
