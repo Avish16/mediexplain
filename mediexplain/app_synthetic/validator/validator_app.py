@@ -13,8 +13,6 @@ from styles import inject_global_css
 from app.bots.meds_rag_search import search_meds_knowledge
 from app_synthetic.router import route_to_specialist_bot
 
-GLOBAL_MED_RAG_VECTORSTORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
-
 # =========================
 # CONSTANTS
 # =========================
@@ -116,19 +114,18 @@ class ConversationTurn:
 # =========================
 from app.bots.meds_rag_search import search_meds_knowledge
 
-MEDS_VECTOR_STORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"  # <--- your vector store ID
-# 🔥 Global RAG Vector Store ID for medication research papers
-GLOBAL_MED_RAG_VECTORSTORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
+# Set MEDS_VECTOR_STORE_ID in env/secrets.toml to enable medication RAG.
+# Leave unset to run in degraded mode (no vector store crash).
+GLOBAL_MED_RAG_VECTORSTORE_ID = os.environ.get("MEDS_VECTOR_STORE_ID", "")
 
 
 def _demo_result(user_query: str, top_k: int) -> ValidatorResult:
-    """REAL RAG retrieval now replaces demo retrieval."""
+    """Run the validation pipeline. RAG is skipped gracefully if no vector store is set."""
 
-    # --- RAG retrieval using real vector store ---
     rag = search_meds_knowledge(
         query=user_query,
         top_k=top_k,
-        vector_store_id=GLOBAL_MED_RAG_VECTORSTORE_ID,
+        vector_store_id=GLOBAL_MED_RAG_VECTORSTORE_ID or None,
     )
 
     # Extract chunks for the UI
@@ -502,7 +499,15 @@ def run_validator_page() -> None:
             st.warning("Please enter a user query first.")
             return
 
-        with st.spinner("Running mock MediExplain pipeline…"):
+        if not GLOBAL_MED_RAG_VECTORSTORE_ID:
+            st.info(
+                "RAG knowledge base not connected. "
+                "Set `MEDS_VECTOR_STORE_ID` in your environment or secrets.toml to enable "
+                "full medication RAG validation. Running in degraded mode.",
+                icon="ℹ️",
+            )
+
+        with st.spinner("Running validation pipeline…"):
             result = _demo_result(user_query.strip(), top_k=top_k)
 
         st.session_state.validator_last_result = result

@@ -52,7 +52,11 @@ def search_meds_knowledge(
     }
     """
     if not vector_store_id:
-        raise ValueError("vector_store_id is required for medication RAG search")
+        return {
+            "answer": "Medication knowledge base not available — vector store not configured.",
+            "chunks": [],
+            "rag_text": "",
+        }
 
     client = get_openai_client()
 
@@ -96,23 +100,28 @@ Retrieve up to {top_k} of the most relevant passages.
 Ground the answer STRICTLY in the retrieved content.
 """
 
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        tools=[
-            {
-                "type": "file_search",
-                # 🔥 IMPORTANT: vector_store_ids is TOP-LEVEL on the tool
-                "vector_store_ids": [vector_store_id],
-            }
-        ],
-        max_output_tokens=900,
-    )
-
-    text = (response.output_text or "").strip()
+    try:
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            tools=[
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [vector_store_id],
+                }
+            ],
+            max_output_tokens=900,
+        )
+        text = (response.output_text or "").strip()
+    except Exception as e:
+        msg = (
+            "Medication knowledge base not available — vector store not found or not configured."
+            f" (detail: {type(e).__name__})"
+        )
+        return {"answer": msg, "chunks": [], "rag_text": ""}
 
     # Try to parse the JSON the model returns
     try:

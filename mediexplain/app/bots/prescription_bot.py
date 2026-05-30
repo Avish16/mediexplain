@@ -8,8 +8,8 @@ except ImportError:
 
 from app.bots.meds_rag_search import search_meds_knowledge
 
-# ✅ Your prescription/meds vector store ID
-PRESCRIPTION_VECTOR_STORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
+# Set MEDS_VECTOR_STORE_ID in env/secrets.toml; leave unset to skip RAG.
+PRESCRIPTION_VECTOR_STORE_ID = os.environ.get("MEDS_VECTOR_STORE_ID", "")
 
 _client = None
 
