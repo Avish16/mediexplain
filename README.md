@@ -1,5 +1,7 @@
 # MediExplain
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-mediexplain.streamlit.app-00D4FF?style=for-the-badge)](https://mediexplain.streamlit.app)
+
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B?logo=streamlit)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai)
