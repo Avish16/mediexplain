@@ -1,14 +1,17 @@
+import os
+import sys
 import time
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
-from app.bots.meds_rag_search import search_meds_knowledge
-from app_synthetic.chat_app import route_to_specialist_bot
-
 
 import pandas as pd
 import streamlit as st
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from styles import inject_global_css
 from app.bots.meds_rag_search import search_meds_knowledge
+from app_synthetic.chat_app import route_to_specialist_bot
 
 GLOBAL_MED_RAG_VECTORSTORE_ID = "vs_6930ffbfc0188191997f62a2ebe5daf5"
 
@@ -197,113 +200,128 @@ def _demo_result(user_query: str, top_k: int) -> ValidatorResult:
 # =========================
 
 def _render_overview(result: ValidatorResult) -> None:
-    col1, col2, col3, col4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Latency (ms)", f"{result.retrieval.latency_ms:.1f}")
+    with c2:
+        st.metric("Evidence Chunks", f"{result.retrieval.num_returned}/{result.retrieval.top_k}")
+    with c3:
+        st.metric("Confidence", f"{result.routing.confidence:.2f}")
+    with c4:
+        st.metric("Safety", result.safety.decision.upper())
 
-    with col1:
-        st.metric("Retrieval latency (ms)", f"{result.retrieval.latency_ms:.1f}")
-    with col2:
-        st.metric(
-            "Evidence chunks",
-            f"{result.retrieval.num_returned}/{result.retrieval.top_k}",
-        )
-    with col3:
-        st.metric("Intent confidence", f"{result.routing.confidence:.2f}")
-    with col4:
-        st.metric("Safety decision", result.safety.decision)
+    safety_color = "t-ok" if result.safety.decision == "safe" else ("t-warn" if result.safety.decision == "transform" else "t-err")
+    flags = ", ".join(result.safety.policy_flags) if result.safety.policy_flags else "none"
 
-    st.markdown("---")
-    st.subheader("High-level pipeline summary")
-    st.write(
-        f"- **Detected intent:** `{result.routing.detected_intent}`  \n"
-        f"- **Selected bot:** `{result.routing.selected_bot}`  \n"
-        f"- **Retrieval index:** `{result.retrieval.index_name}` "
-        f"using `{result.retrieval.strategy}`  \n"
-        f"- **Safety flags:** {', '.join(result.safety.policy_flags) or 'None'}"
-    )
-
-    st.markdown("### Full query")
-    st.write(result.query)
+    st.markdown(f"""
+    <div class="term-block" style="margin-top:16px;">
+      <span class="t-dim">────── pipeline trace ──────</span><br>
+      <span class="t-key">detected_intent</span>  <span class="t-dim">=</span>  <span class="t-val">{result.routing.detected_intent}</span><br>
+      <span class="t-key">selected_bot    </span>  <span class="t-dim">=</span>  <span class="t-info">{result.routing.selected_bot}</span><br>
+      <span class="t-key">retrieval_index </span>  <span class="t-dim">=</span>  <span class="t-val">{result.retrieval.index_name}</span><br>
+      <span class="t-key">strategy        </span>  <span class="t-dim">=</span>  <span class="t-val">{result.retrieval.strategy}</span><br>
+      <span class="t-key">safety_decision </span>  <span class="t-dim">=</span>  <span class="{safety_color}">{result.safety.decision}</span><br>
+      <span class="t-key">policy_flags    </span>  <span class="t-dim">=</span>  <span class="t-val">{flags}</span><br>
+      <span class="t-dim">────── query ──────</span><br>
+      <span class="t-label">&gt; </span><span class="t-val">{result.query}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def _render_retrieval_panel(result: ValidatorResult) -> None:
-    st.subheader("Retrieved evidence")
-    df = pd.DataFrame(
-        [
-            {
-                "Rank": c.rank,
-                "Score": round(c.score, 4),
-                "Source": c.source,
-                "Doc ID": c.doc_id,
-                "Snippet": c.snippet,
-            }
-            for c in result.retrieval.chunks
-        ]
-    )
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # Terminal header row
+    rows_html = ""
+    for c in result.retrieval.chunks:
+        score_color = "t-ok" if c.score >= 0.8 else ("t-warn" if c.score >= 0.5 else "t-err")
+        snippet_safe = (c.snippet[:120] + "...") if len(c.snippet) > 120 else c.snippet
+        rows_html += f"""
+        <div style="border-bottom:1px solid rgba(16,185,129,0.08);padding:8px 0;">
+          <span class="t-dim">[{c.rank:02d}]</span>
+          <span class="{score_color}" style="margin:0 10px;">score={c.score:.4f}</span>
+          <span class="t-key">{c.source}</span>
+          <span class="t-dim"> / {c.doc_id}</span><br>
+          <span class="t-val" style="margin-left:28px;font-size:11px;">{snippet_safe}</span>
+        </div>"""
 
-    with st.expander("Raw retrieval diagnostics"):
-        st.json(
-            {
-                "latency_ms": result.retrieval.latency_ms,
-                "top_k": result.retrieval.top_k,
-                "num_returned": result.retrieval.num_returned,
-                "index_name": result.retrieval.index_name,
-                "strategy": result.retrieval.strategy,
-            }
-        )
+    st.markdown(f"""
+    <div class="term-block">
+      <span class="t-ok">RETRIEVAL</span>
+      <span class="t-dim"> chunks={result.retrieval.num_returned}/{result.retrieval.top_k}
+      latency={result.retrieval.latency_ms:.1f}ms
+      index={result.retrieval.index_name}</span>
+      {rows_html if rows_html else '<br><span class="t-warn">no chunks returned</span>'}
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.expander("Raw diagnostics JSON"):
+        st.json({
+            "latency_ms": result.retrieval.latency_ms,
+            "top_k": result.retrieval.top_k,
+            "num_returned": result.retrieval.num_returned,
+            "index_name": result.retrieval.index_name,
+            "strategy": result.retrieval.strategy,
+        })
 
 
 def _render_routing_panel(result: ValidatorResult) -> None:
-    st.subheader("Router decisions & trace")
-    st.write(
-        f"**Detected intent:** `{result.routing.detected_intent}`  \n"
-        f"**Selected bot:** `{result.routing.selected_bot}`  \n"
-        f"**Confidence:** `{result.routing.confidence:.2f}`"
-    )
-    st.markdown("### Routing steps")
-    for step in result.routing.trace:
-        with st.container(border=True):
-            st.markdown(f"**{step.step}**")
-            st.write(step.detail)
-            if step.meta:
-                with st.expander("Metadata"):
-                    st.json(step.meta)
+    conf_color = "t-ok" if result.routing.confidence >= 0.8 else ("t-warn" if result.routing.confidence >= 0.5 else "t-err")
+    trace_rows = ""
+    for i, step in enumerate(result.routing.trace):
+        trace_rows += f"""
+        <div style="padding:6px 0;border-bottom:1px solid rgba(16,185,129,0.06);">
+          <span class="t-dim">[step-{i}]</span>
+          <span class="t-info" style="margin:0 8px;">{step.step}</span>
+          <span class="t-val">{step.detail}</span>
+        </div>"""
+
+    st.markdown(f"""
+    <div class="term-block">
+      <span class="t-ok">ROUTING</span><br>
+      <span class="t-key">intent    </span> <span class="t-dim">=</span> <span class="t-val">{result.routing.detected_intent}</span><br>
+      <span class="t-key">bot       </span> <span class="t-dim">=</span> <span class="t-info">{result.routing.selected_bot}</span><br>
+      <span class="t-key">confidence</span> <span class="t-dim">=</span> <span class="{conf_color}">{result.routing.confidence:.2f}</span><br>
+      <span class="t-dim">── trace ──</span>
+      {trace_rows}
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def _render_safety_panel(result: ValidatorResult) -> None:
-    st.subheader("Safety & guardrails")
-    desc = SAFETY_LEVELS.get(result.safety.decision, "Unknown safety state.")
-    if result.safety.decision == "safe":
-        st.success(desc)
-    elif result.safety.decision == "transform":
-        st.warning(desc)
-    elif result.safety.decision == "block":
-        st.error(desc)
-    else:
-        st.info(desc)
+    decision = result.safety.decision
+    decision_map = {
+        "safe":      ("t-ok",   "[PASS]", "No safety issues detected."),
+        "transform": ("t-warn", "[WARN]", "Unsafe content transformed/softened."),
+        "block":     ("t-err",  "[FAIL]", "Unsafe — response blocked."),
+    }
+    css_cls, badge, default_note = decision_map.get(decision, ("t-info", "[INFO]", ""))
+    flags = ", ".join(result.safety.policy_flags) if result.safety.policy_flags else "none"
 
-    st.write("**Policy flags:**", ", ".join(result.safety.policy_flags) or "None")
-    st.markdown("**Notes:**")
-    st.write(result.safety.notes)
+    st.markdown(f"""
+    <div class="term-block">
+      <span class="{css_cls}">{badge} SAFETY AUDIT</span><br>
+      <span class="t-key">decision     </span> <span class="t-dim">=</span> <span class="{css_cls}">{decision.upper()}</span><br>
+      <span class="t-key">policy_flags </span> <span class="t-dim">=</span> <span class="t-val">{flags}</span><br>
+      <span class="t-key">notes        </span> <span class="t-dim">=</span> <span class="t-val">{result.safety.notes or default_note}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def _render_bot_outputs_panel(result: ValidatorResult) -> None:
-    st.subheader("Bot answer & reasoning")
+    st.markdown(f"""
+    <div class="term-block">
+      <span class="t-ok">[BOT OUTPUT]</span>
+      <span class="t-dim"> model={result.bot_outputs.model_name}
+      temp={result.bot_outputs.temperature}</span><br>
+      <span class="t-dim">──────────────────────────────────────</span><br>
+      <span class="t-val" style="white-space:pre-wrap;word-break:break-word;">{result.bot_outputs.final_answer[:1200]}{"..." if len(result.bot_outputs.final_answer) > 1200 else ""}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("### Final answer shown to user")
-    st.write(result.bot_outputs.final_answer)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**Model:**", result.bot_outputs.model_name)
-    with col2:
-        st.write("**Temperature:**", result.bot_outputs.temperature)
-
-    with st.expander("Reasoning notes (developer only)"):
-        st.write(result.bot_outputs.reasoning_notes)
+    with st.expander("Reasoning notes"):
+        st.markdown(f"<div class='term-block'><span class='t-dim'>{result.bot_outputs.reasoning_notes}</span></div>", unsafe_allow_html=True)
 
     with st.expander("Raw completion payload"):
-        st.text(result.bot_outputs.raw_completion)
+        st.markdown(f"<div class='term-block'><span class='t-val' style='white-space:pre-wrap;'>{result.bot_outputs.raw_completion[:2000]}</span></div>", unsafe_allow_html=True)
 
 
 def _render_synthetic_patient_panel(result: ValidatorResult) -> None:
@@ -331,36 +349,52 @@ def _render_synthetic_patient_panel(result: ValidatorResult) -> None:
 
 
 def _render_raw_json_panel(result: ValidatorResult) -> None:
-    st.subheader("Raw ValidatorResult payload")
-    st.json(asdict(result))
+    import json as _json
+    raw = _json.dumps(asdict(result), indent=2, ensure_ascii=False)
+    st.markdown(f"""
+    <div class="term-block" style="max-height:500px;overflow-y:auto;">
+      <span class="t-dim">// raw ValidatorResult payload</span><br>
+      <pre style="margin:0;color:#94A3B8;font-size:11px;white-space:pre-wrap;word-break:break-all;">{raw}</pre>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # NEW: history renderer
 def _render_history_panel(history: List[ConversationTurn]) -> None:
-    st.subheader("Validator Q&A history (this session)")
     if not history:
-        st.info("No previous runs recorded yet.")
+        st.markdown("""
+        <div class="term-block">
+          <span class="t-warn">// no runs recorded in this session</span>
+        </div>
+        """, unsafe_allow_html=True)
         return
 
-    # Most recent first
-    rows = [
-        {
-            "Time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t.timestamp)),
-            "Question": t.query[:120] + ("…" if len(t.query) > 120 else ""),
-            "Answer (preview)": t.answer[:120] + ("…" if len(t.answer) > 120 else ""),
-        }
-        for t in reversed(history)
-    ]
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    rows_html = ""
+    for i, t in enumerate(reversed(history)):
+        ts = time.strftime("%H:%M:%S", time.localtime(t.timestamp))
+        q = (t.query[:80] + "...") if len(t.query) > 80 else t.query
+        a = (t.answer[:80] + "...") if len(t.answer) > 80 else t.answer
+        rows_html += f"""
+        <div style="padding:6px 0;border-bottom:1px solid rgba(16,185,129,0.06);">
+          <span class="t-dim">[{ts}]</span>
+          <span class="t-info" style="margin:0 8px;">#{i+1}</span>
+          <span class="t-label">Q:</span> <span class="t-val">{q}</span><br>
+          <span style="margin-left:40px;"><span class="t-ok">A:</span> <span class="t-dim">{a}</span></span>
+        </div>"""
 
-    st.markdown("### Full questions and answers")
+    st.markdown(f"""
+    <div class="term-block">
+      <span class="t-ok">Q&amp;A HISTORY</span>
+      <span class="t-dim"> ({len(history)} runs this session)</span>
+      {rows_html}
+    </div>
+    """, unsafe_allow_html=True)
+
     for idx, t in enumerate(reversed(history), start=1):
-        with st.expander(f"Run {idx} – {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(t.timestamp))}"):
-            st.markdown("**Question:**")
-            st.write(t.query)
-            st.markdown("**Answer:**")
-            st.write(t.answer)
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t.timestamp))
+        with st.expander(f"[{ts}] Run #{idx}"):
+            st.markdown(f"<div class='term-block'><span class='t-label'>QUERY</span><br><span class='t-val'>{t.query}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='term-block' style='margin-top:6px;'><span class='t-ok'>ANSWER</span><br><span class='t-val' style='white-space:pre-wrap;'>{t.answer}</span></div>", unsafe_allow_html=True)
 
 
 # =========================
@@ -368,20 +402,79 @@ def _render_history_panel(history: List[ConversationTurn]) -> None:
 # =========================
 
 def run_validator_page() -> None:
-    st.title("🩺 MediExplain – Validator Console")
-    st.caption(
-        "Developer-facing console for diagnostics on retrieval, routing, "
-        "safety, final bot output, synthetic patient context, and Q&A history."
-    )
+    inject_global_css()
 
-    st.sidebar.header("Validator controls")
+    # Terminal-specific CSS
+    st.markdown("""
+    <style>
+    /* Terminal panel */
+    .term-block {
+        background: #030712;
+        border: 1px solid rgba(16,185,129,0.2);
+        border-radius: 10px;
+        padding: 16px 20px;
+        font-family: ‘Courier New’, ‘Consolas’, monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        overflow-x: auto;
+    }
+    .term-block .t-ok     { color: #10B981; }
+    .term-block .t-err    { color: #EF4444; }
+    .term-block .t-warn   { color: #F59E0B; }
+    .term-block .t-info   { color: #00D4FF; }
+    .term-block .t-dim    { color: #374151; }
+    .term-block .t-label  { color: #6EE7B7; font-weight: bold; }
+    .term-block .t-val    { color: #E2E8F0; }
+    .term-block .t-key    { color: #7DD3FC; }
+    .term-prompt::before  { content: ‘$ ‘; color: #10B981; }
+
+    /* Override tab styling for terminal theme */
+    .validator-page .stTabs [data-baseweb="tab"] {
+        font-family: ‘Courier New’, monospace !important;
+        font-size: 12px !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    /* Dataframe monospace */
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
+        font-family: ‘Courier New’, monospace !important;
+        font-size: 12px !important;
+    }
+    </style>
+    <div class="validator-page">
+    """, unsafe_allow_html=True)
+
+    # Header
+    st.markdown("""
+    <div style="padding:28px 0 20px;animation:fadeIn 0.5s ease;">
+      <div style="display:inline-block;background:rgba(16,185,129,0.08);
+                  border:1px solid rgba(16,185,129,0.2);border-radius:100px;
+                  padding:4px 14px;font-size:11px;color:#10B981;
+                  font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;
+                  font-family:’Courier New’,monospace;">DEV CONSOLE</div>
+      <h1 style="font-family:’Space Grotesk’,sans-serif;font-size:30px;font-weight:700;
+                 color:#F1F5F9;margin:0 0 6px;">Validator Console</h1>
+      <p style="font-size:13px;color:#475569;margin:0;font-family:’Courier New’,monospace;">
+        // pipeline introspection: retrieval · routing · safety · bot outputs · Q&amp;A history
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Sidebar
+    st.sidebar.markdown("""
+    <div style="font-family:’Courier New’,monospace;font-size:12px;font-weight:600;
+                color:#10B981;text-transform:uppercase;letter-spacing:1.5px;
+                padding:8px 0 12px;border-bottom:1px solid rgba(16,185,129,0.15);margin-bottom:16px;">
+      &gt; Controls
+    </div>
+    """, unsafe_allow_html=True)
 
     default_query = (
         "Is it safe to increase my blood pressure medication dose "
         "if I still have headaches?"
     )
     user_query = st.sidebar.text_area(
-        "User query",
+        "Query",
         value=default_query,
         height=120,
     )
@@ -391,10 +484,10 @@ def run_validator_page() -> None:
     )
 
     reuse_last = st.sidebar.checkbox(
-        "Reuse last result (don’t re-run pipeline)", value=False
+        "Reuse last result", value=False
     )
 
-    run_btn = st.sidebar.button("Run validation", type="primary")
+    run_btn = st.sidebar.button(">> Run Validation", type="primary", use_container_width=True)
 
     # session state for last result + history
     if "validator_last_result" not in st.session_state:
@@ -426,7 +519,14 @@ def run_validator_page() -> None:
     result: Optional[ValidatorResult] = st.session_state.validator_last_result
 
     if result is None:
-        st.info("Enter a query in the sidebar and click **Run validation**.")
+        st.markdown("""
+        <div class="term-block">
+          <span class="t-ok">mediexplain-validator</span><span class="t-dim"> v1.0 ready</span><br>
+          <span class="t-dim">────────────────────────────────────────</span><br>
+          <span class="t-warn">⚠</span> <span class="t-val">No query run yet.</span><br>
+          <span class="t-dim">&gt; Enter a query in the sidebar and click</span> <span class="t-info">&gt;&gt; Run Validation</span>
+        </div>
+        """, unsafe_allow_html=True)
         return
 
     history: List[ConversationTurn] = st.session_state.validator_history
