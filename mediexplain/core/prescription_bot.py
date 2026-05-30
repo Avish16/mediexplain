@@ -39,58 +39,132 @@ def _client_instance():
 # ----------------------------------------------------
 # ROBUST JSON EXTRACTOR (Prescription Bot)
 # ----------------------------------------------------
+def _close_truncated_json(text: str) -> str:
+    """Close unclosed { [ brackets left by a truncated response."""
+    open_stack = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+        else:
+            if c == '"':
+                in_string = True
+            elif c == "{":
+                open_stack.append("}")
+            elif c == "[":
+                open_stack.append("]")
+            elif c in "}]":
+                if open_stack and open_stack[-1] == c:
+                    open_stack.pop()
+        i += 1
+    return text.rstrip().rstrip(",").rstrip() + "".join(reversed(open_stack))
+
+
+def _close_truncated_json(text: str) -> str:
+    """
+    Close any unclosed { [ brackets left by a truncated response.
+    Walks the string tracking string/escape state so brackets inside
+    string values are ignored.
+    """
+    open_stack = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 2          # skip escaped character
+                continue
+            if c == '"':
+                in_string = False
+        else:
+            if c == '"':
+                in_string = True
+            elif c == "{":
+                open_stack.append("}")
+            elif c == "[":
+                open_stack.append("]")
+            elif c in "}]":
+                if open_stack and open_stack[-1] == c:
+                    open_stack.pop()
+        i += 1
+    # Strip trailing comma/whitespace then close open structures
+    repaired = text.rstrip().rstrip(",").rstrip()
+    repaired += "".join(reversed(open_stack))
+    return repaired
+
+
 def _safe_extract_json(text: str) -> dict:
     """
-    Defensive JSON extractor for Prescription Bot:
-    - strips markdown fences
-    - removes control chars
-    - cleans illegal backslash escapes
-    - trims trailing commas
-    - returns parsed JSON dict
+    Defensive JSON extractor that handles truncated responses, markdown
+    fences, control chars, illegal escapes, and trailing commas.
+    On unrecoverable failure returns a partial-result dict instead of
+    raising, so the pipeline can continue with degraded data.
     """
     if not text:
-        raise ValueError("Prescription Bot: Empty model output.")
+        return {"_parse_error": "Prescription Bot: empty model output"}
 
-    # Remove code fences if model ever adds them
+    # Strip markdown fences
     text = text.replace("```json", "").replace("```", "").strip()
 
-    # Remove invisible control characters
-    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    # Remove invisible control characters (keep \n for now)
+    text = re.sub(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]", " ", text)
 
-    # Flatten newlines
-    text = text.replace("\n", " ")
-
-    # Remove illegal escapes like \q, \Z, etc. (keep only legal JSON escapes)
+    # Remove illegal JSON escape sequences like \q \s \3
     text = re.sub(r'\\(?!["\\/bfnrtu])', "", text)
 
-    # Extract first JSON object
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError(
-            "Prescription Bot: No JSON object found in output.\n"
-            f"RAW START:\n{text[:1500]}\n..."
-        )
+    # Find the first JSON object boundary
+    start = text.find("{")
+    if start == -1:
+        return {"_parse_error": "Prescription Bot: no JSON object found",
+                "_raw_preview": text[:500]}
 
-    json_text = match.group(0)
+    json_text = text[start:]
 
-    # Fix double braces if they slip in
+    # Fix double braces and trailing commas
     json_text = json_text.replace("{{", "{").replace("}}", "}")
-
-    # Remove trailing commas before } or ]
     json_text = re.sub(r",\s*(\})", r"\1", json_text)
     json_text = re.sub(r",\s*(\])", r"\1", json_text)
 
-    # Collapse whitespace
-    json_text = re.sub(r"\s+", " ", json_text)
-
+    # Attempt 1: parse as-is
     try:
         return json.loads(json_text)
-    except Exception as e:
-        raise ValueError(
-            f"\n❌ Prescription Bot JSON parse error: {e}\n"
-            f"--------- RAW JSON START ---------\n{json_text[:4000]}\n"
-            f"--------- RAW JSON END -----------"
-        )
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 2: repair truncation then parse
+    try:
+        repaired = _close_truncated_json(json_text)
+        result = json.loads(repaired)
+        result["_truncated"] = True     # flag so callers know data is partial
+        return result
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 3: extract whatever top-level keys parsed before the break
+    partial: dict = {}
+    # Pull out any "key": "string value" pairs we can find
+    for m in re.finditer(r'"(\w+)"\s*:\s*"([^"]{0,2000})"', json_text):
+        partial[m.group(1)] = m.group(2)
+
+    if partial:
+        partial["_truncated"] = True
+        partial["_parse_error"] = "JSON was truncated; only string fields recovered"
+        return partial
+
+    # Final fallback: return a safe shell so the pipeline does not crash
+    print("[Prescription Bot] [FAIL] All JSON recovery attempts failed. Returning empty shell.")
+    return {
+        "_truncated": True,
+        "_parse_error": "Prescription Bot: JSON unrecoverable",
+        "_raw_preview": json_text[:500],
+    }
 
 
 # ----------------------------------------------------
@@ -262,7 +336,7 @@ RULES:
             response = _client_instance().responses.create(
                 model="gpt-4.1",
                 input=prompt,
-                max_output_tokens=3500,
+                max_output_tokens=8000,
             )
             raw = (response.output_text or "").strip()
             return _safe_extract_json(raw)
@@ -272,5 +346,5 @@ RULES:
             continue
 
     # FINAL FALLBACK:
-    print("[billing Bot WARNING] JSON parse failed, returning raw output:", last_error)
-    return raw
+    print("[Prescription Bot] [WARN] All attempts exhausted:", last_error)
+    return _safe_extract_json(raw if "raw" in dir() else "")

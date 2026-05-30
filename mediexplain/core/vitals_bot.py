@@ -61,7 +61,7 @@ def _safe_extract_json(text: str) -> dict:
         return json.loads(json_text)
     except Exception as e:
         raise ValueError(
-            f"❌ Vitals Bot JSON Clean Failed: {e}\n"
+            f"[FAIL] Vitals Bot JSON Clean Failed: {e}\n"
             f"------- RAW START -------\n{json_text[:2500]}\n------- RAW END -------"
         )
 

@@ -86,7 +86,7 @@ def _safe_extract_json(text: str) -> dict:
         return json.loads(json_text)
     except Exception as e:
         raise ValueError(
-            f"\n❌ Pathology Bot JSON parse failed: {e}\n"
+            f"\n[FAIL] Pathology Bot JSON parse failed: {e}\n"
             f"------- RAW START -------\n{json_text[:2500]}\n"
             f"------- RAW END -------"
         )

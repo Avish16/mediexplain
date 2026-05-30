@@ -88,7 +88,7 @@ def _safe_extract_json(text: str) -> dict:
         return json.loads(json_text)
     except Exception as e:
         raise ValueError(
-            f"\n❌ Billing Bot JSON parse error: {e}\n"
+            f"\n[FAIL] Billing Bot JSON parse error: {e}\n"
             f"--------- RAW JSON START ---------\n{json_text[:4000]}\n"
             f"--------- RAW JSON END -----------"
         )
